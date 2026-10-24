@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parallax App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #0d0d0d;
+    --element: #141414;
+    --hover: #1a1a1a;
+    --text: #e8e8e8;
+    --text-dim: #7a7a7a;
+    --text-dimmer: #4a4a4a;
+    --line: #1e1e1e;
+    --line-bright: #333333;
+    --accent: #f0f0f0;
+    --green: #4ade80;
+    --blue: #3b82f6;
+    --mono: 'JetBrains Mono', monospace;
+    --ease: cubic-bezier(.2,.8,.2,1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    height: 48px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .brand { font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 10px; }
+  .brand i { color: var(--text-dim); }
+  .version { font-size: 11px; color: var(--text-dimmer); }
+
+  /* ── SETUP LAYOUT ── */
+  .workspace {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 280px;
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .step {
+    display: flex;
+    gap: 16px;
+    opacity: 0.4;
+    transition: opacity 0.3s var(--ease);
+  }
+  .step.active { opacity: 1; }
+  .step.completed { opacity: 0.8; }
+  
+  .step-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .step-circle {
+    width: 24px; height: 24px;
+    border-radius: 0;
+    border: 1px solid var(--line-bright);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    color: var(--text-dim);
+    transition: all 0.3s var(--ease);
+  }
+  .step.active .step-circle { border-color: var(--text); color: var(--text); }
+  .step.completed .step-circle { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .step-line { width: 1px; flex: 1; background: var(--line); min-height: 20px; }
+  
+  .step-content { flex: 1; padding-bottom: 24px; }
+  .step-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .step-desc { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+
+  /* CONTENT */
+  .content {
+    flex: 1;
+    padding: 48px 64px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .content-header { margin-bottom: 32px; }
+  .content-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .content-sub { font-size: 13px; color: var(--text-dim); }
+
+  .setup-panel {
+    background: var(--element);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    padding: 32px;
+    max-width: 640px;
+    margin-bottom: 32px;
+  }
+
+  .data-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .data-row:last-child { border-bottom: none; }
+  .data-label { color: var(--text-dim); display: flex; align-items: center; gap: 8px; }
+  .data-value { font-weight: 500; color: var(--text); }
+  .data-value.success { color: var(--green); }
+  .data-value.warning { color: #fbbf24; }
+
+  .actions-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    justify-content: flex-end;
+  }
+  .btn {
+    background: transparent;
+    border: 1px solid var(--line-bright);
+    color: var(--text);
+    padding: 10px 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 0;
+    transition: all 0.2s var(--ease);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn:hover { background: var(--hover); border-color: var(--text-dim); }
+  .btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn-primary:hover { background: #fff; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* PROGRESS BAR */
+  .progress-container { margin-top: 24px; display: none; }
+  .progress-container.active { display: block; }
+  .progress-bar-bg { height: 4px; background: var(--bg); border-radius: 0; overflow: hidden; margin-top: 12px; }
+  .progress-bar-fill { height: 100%; background: var(--text); width: 0%; transition: width 0.3s linear; }
+  .progress-text { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; }
+
+  /* MODELS GRID */
+  .model-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .model-card {
+    border: 1px solid var(--line);
+    border-radius: 0;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--panel);
+  }
+  .model-card:hover { border-color: var(--text-dim); }
+  .model-card.selected { border-color: var(--text); background: var(--bg); }
+  .model-card-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .model-name { font-weight: 600; }
+  .model-size { font-size: 11px; color: var(--text-dim); }
+  .model-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+
+  .custom-select {
+    background: var(--bg); border: 1px solid var(--line-bright);
+    color: var(--text); padding: 8px 12px; font-family: var(--mono);
+    border-radius: 0;
+    outline: none; width: 100%; max-width: 300px;
+  }
+  
+  .hidden { display: none !important; }
+
+  /* ══════════════════════════════════════════
+     CHAT UI
+     ══════════════════════════════════════════ */
+  #chat-ui {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .chat-scroll {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  .chat-inner {
+    max-width: 768px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+    width: 100%;
+  }
+
+  .welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 50vh;
+    text-align: center;
+  }
+  .welcome-title {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 12px;
+  }
+  .welcome-sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    max-width: 480px;
+    line-height: 1.7;
+  }
+
+  .msg {
+    display: flex;
+    gap: 14px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .msg:last-child { border-bottom: none; }
+  .msg-avatar {
+    width: 24px; height: 24px;
+    display: grid; place-items: center;
+    font-size: 10px; font-weight: 700;
+    border: 1px solid var(--line-bright);
+    background: var(--element);
+  }
+  .msg.user .msg-avatar { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .msg-content { flex: 1; min-width: 0; }
+  .msg-role {
+    font-size: 10px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--text-dimmer);
+    text-transform: uppercase;
+  }
+  .msg-body {
+    font-size: 14px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+  }
+
+  .composer-wrap {
+    flex-shrink: 0;
+    padding: 0 24px 20px;
+    background: linear-gradient(to bottom, transparent, var(--bg) 40%);
+  }
+  .composer-inner {
+    max-width: 768px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .composer {
+    background: var(--element);
+    border: 1px solid var(--line);
+    padding: 12px 12px 8px 16px;
+    display: flex;
+    flex-direction: column;
+  }
+  .composer:focus-within { border-color: var(--line-bright); }
+  #chat-input {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    outline: none;
+    resize: none;
+    min-height: 26px;
+    max-height: 200px;
+    padding: 4px 0;
+    width: 100%;
+  }
+  .composer-footer { display: flex; align-items: center; justify-content: flex-end; padding-top: 6px; }
+  #send-btn {
+    width: 30px; height: 30px;
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: opacity 0.2s;
+  }
+  #send-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+  <div class="topbar" id="topbar">
+    <div class="brand"><i class="fa-solid fa-layer-group"></i> PARALLAX APP</div>
+    <div class="version" id="topbar-version">v0.2.17</div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       SETUP WIZARD
+       ══════════════════════════════════════════ -->
+  <div class="workspace" id="setup-wizard">
+    <div class="sidebar">
+      <div class="step active" id="step-1-indicator">
+        <div class="step-indicator"><div class="step-circle">1</div><div class="step-line"></div></div>
+        <div class="step-content"><div class="step-title">System Check</div><div class="step-desc">Detect OS, memory, and GPU.</div></div>
+      </div>
+      <div class="step" id="step-2-indicator">
+        <div class="step-indicator"><div class="step-circle">2</div><div class="step-line"></div></div>
+        <div class="step-content"><div class="step-title">Inference Engine</div><div class="step-desc">Prepare llama.cpp backend.</div></div>
+      </div>
+      <div class="step" id="step-3-indicator">
+        <div class="step-indicator"><div class="step-circle">3</div><div class="step-line"></div></div>
+        <div class="step-content"><div class="step-title">Select Model</div><div class="step-desc">Choose and download.</div></div>
+      </div>
+      <div class="step" id="step-4-indicator">
+        <div class="step-indicator"><div class="step-circle">4</div></div>
+        <div class="step-content"><div class="step-title">Launch</div><div class="step-desc">Health check and start.</div></div>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- STEP 1 -->
+      <div id="view-step-1">
+        <div class="content-header"><div class="content-title">System Check</div><div class="content-sub">Verifying hardware compatibility for Parallax.</div></div>
+        <div class="setup-panel">
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-desktop"></i> Operating System</div><div class="data-value" id="sys-os">Detecting...</div></div>
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-microchip"></i> Architecture</div><div class="data-value" id="sys-arch">Detecting...</div></div>
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-memory"></i> CPU Cores</div><div class="data-value" id="sys-cores">Detecting...</div></div>
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-hard-drive"></i> System RAM</div><div class="data-value" id="sys-ram">Detecting...</div></div>
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-gamepad"></i> GPU Acceleration</div><div class="data-value" id="sys-gpu">Detecting...</div></div>
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-video"></i> VRAM Available</div><div class="data-value" id="sys-vram">Detecting...</div></div>
+        </div>
+        <div class="actions-row"><button class="btn btn-primary" id="btn-step-1" onclick="goToStep(2)" disabled>Continue <i class="fa-solid fa-arrow-right"></i></button></div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div id="view-step-2" class="hidden">
+        <div class="content-header"><div class="content-title">Inference Engine</div><div class="content-sub">Preparing the local llama.cpp backend.</div></div>
+        <div class="setup-panel">
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-server"></i> Managed Engine</div><div class="data-value" id="engine-status">Checking installation...</div></div>
+          <div class="progress-container" id="engine-progress-box">
+            <div class="progress-text"><span id="engine-progress-label">Downloading verified build...</span><span id="engine-progress-pct">0%</span></div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="engine-progress-bar"></div></div>
+          </div>
+        </div>
+        <div class="actions-row"><button class="btn btn-primary" id="btn-step-2" onclick="goToStep(3)" disabled>Continue <i class="fa-solid fa-arrow-right"></i></button></div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div id="view-step-3" class="hidden">
+        <div class="content-header"><div class="content-title">Select a Model</div><div class="content-sub">Choose a Parallax variant. The app will automatically select the best quantization for your VRAM.</div></div>
+        <div class="model-grid">
+          <div class="model-card" onclick="selectFamily('parallax-2')">
+            <div class="model-card-header"><div class="model-name">Parallax 2</div><div class="model-size">9B</div></div>
+            <div class="model-desc">The flagship reasoning model. Best for complex coding and agentic tasks.</div>
+          </div>
+          <div class="model-card" onclick="selectFamily('parallax-2-mini-preview')">
+            <div class="model-card-header"><div class="model-name">Parallax 2 Mini Preview</div><div class="model-size">0.8B</div></div>
+            <div class="model-desc">The smallest tier. Demos the reasoning style on minimum hardware. Not for heavy coding.</div>
+          </div>
+        </div>
+        <div id="quant-panel" class="setup-panel hidden" style="margin-top: 24px;">
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-cloud-arrow-down"></i> Available Quantizations</div><div class="data-value" id="quant-status">Fetching from Hugging Face...</div></div>
+          <div class="data-row"><div class="data-label">Recommended for your VRAM</div><div class="data-value" id="quant-recommended" style="color: var(--green);">-</div></div>
+          <div class="data-row"><div class="data-label">Selected Quantization</div><div class="data-value"><select class="custom-select" id="quant-select" onchange="updateDownloadSize()"><option value="">Waiting for fetch...</option></select></div></div>
+        </div>
+        <div class="progress-container" id="model-progress-box" style="margin-top: 24px;">
+          <div class="progress-text"><span id="model-progress-label">Waiting...</span><span id="model-progress-pct">0%</span></div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="model-progress-bar" style="width: 0%;"></div></div>
+        </div>
+        <div class="actions-row"><button class="btn btn-primary" id="btn-step-3" onclick="startModelDownload()" disabled>Download & Continue</button></div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div id="view-step-4" class="hidden">
+        <div class="content-header"><div class="content-title">Launch Parallax</div><div class="content-sub">Running diagnostics and saving configuration.</div></div>
+        <div class="setup-panel">
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-stethoscope"></i> Health Check</div><div class="data-value" id="launch-health">Pending...</div></div>
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-floppy-disk"></i> Save Config</div><div class="data-value" id="launch-save">Pending...</div></div>
+          <div class="data-row"><div class="data-label"><i class="fa-solid fa-rocket"></i> Open UI</div><div class="data-value" id="launch-ui">Pending...</div></div>
+        </div>
+        <div class="actions-row"><button class="btn btn-primary" id="btn-step-4" onclick="finishSetup()" disabled>Launch Parallax</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       CHAT UI
+       ══════════════════════════════════════════ -->
+  <div id="chat-ui" class="hidden">
+    <div class="chat-scroll" id="chat-scroll">
+      <div class="chat-inner" id="chat-inner">
+        <div class="welcome" id="welcome-screen">
+          <div class="welcome-title">Parallax 2</div>
+          <div class="welcome-sub">A compact reasoning model by Parallax Labs. Running locally on your hardware.</div>
+        </div>
+      </div>
+    </div>
+    <div class="composer-wrap">
+      <div class="composer-inner">
+        <div class="composer">
+          <textarea id="chat-input" placeholder="Send a message..." rows="1"></textarea>
+          <div class="composer-footer">
+            <button id="send-btn" title="Send" disabled>
+              <i class="fa-solid fa-arrow-up"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ── SETUP STATE ──
+  let currentStep = 1;
+  let detectedVram = 0;
+  let selectedFamily = null;
+  let availableQuants = [];
+  let recommendedQuant = null;
+
+  // ── NAVIGATION ──
+  function goToStep(step) {
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById(`view-step-${i}`).classList.add('hidden');
+      document.getElementById(`step-${i}-indicator`).classList.remove('active');
+      if (i < step) document.getElementById(`step-${i}-indicator`).classList.add('completed');
+      else document.getElementById(`step-${i}-indicator`).classList.remove('completed');
+    }
+    document.getElementById(`view-step-${step}`).classList.remove('hidden');
+    document.getElementById(`step-${step}-indicator`).classList.add('active');
+    currentStep = step;
+
+    if (step === 2) startEngineSetup();
+    if (step === 4) startLaunchSequence();
+  }
+
+  // ── STEP 1: HARDWARE ──
+  window.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const info = await window.__TAURI__.core.invoke('get_system_info');
+      document.getElementById('sys-os').innerText = info.os;
+      document.getElementById('sys-arch').innerText = info.arch;
+      document.getElementById('sys-cores').innerText = info.cpu_cores;
+      document.getElementById('sys-ram').innerText = info.total_ram_gb + " GB";
+      document.getElementById('sys-gpu').innerText = info.gpu_model;
+      document.getElementById('sys-gpu').classList.add('success');
+      document.getElementById('sys-vram').innerText = info.total_vram_gb + " GB";
+      document.getElementById('sys-vram').classList.add('success');
+      detectedVram = info.total_vram_gb;
+      document.getElementById('btn-step-1').disabled = false;
+    } catch (e) {
+      console.error("Rust command failed:", e);
+      document.getElementById('sys-os').innerText = "Error calling Rust backend";
+    }
+  });
+
+  // ── STEP 2: ENGINE ──
+  function startEngineSetup() {
+    const status = document.getElementById('engine-status');
+    const progressBox = document.getElementById('engine-progress-box');
+    const progressBar = document.getElementById('engine-progress-bar');
+    const progressPct = document.getElementById('engine-progress-pct');
+    const btn = document.getElementById('btn-step-2');
+
+    status.innerText = "Verifying installation...";
+    setTimeout(() => {
+      status.innerText = "Build missing. Downloading...";
+      status.classList.add('warning');
+      progressBox.classList.add('active');
+      let pct = 0;
+      const interval = setInterval(() => {
+        pct += Math.random() * 15;
+        if (pct > 100) pct = 100;
+        progressBar.style.width = pct + '%';
+        progressPct.innerText = Math.floor(pct) + '%';
+        if (pct === 100) {
+          clearInterval(interval);
+          status.innerText = "Engine Ready";
+          status.classList.remove('warning');
+          status.classList.add('success');
+          progressBox.classList.remove('active');
+          btn.disabled = false;
+        }
+      }, 300);
+    }, 800);
+  }
+
+  // ── STEP 3: MODEL ──
+  async function selectFamily(familyId) {
+    document.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+    selectedFamily = familyId;
+    
+    document.getElementById('quant-panel').classList.remove('hidden');
+    document.getElementById('quant-status').innerText = "Fetching from Hugging Face...";
+    document.getElementById('quant-status').className = "data-value";
+    document.getElementById('quant-select').innerHTML = '<option value="">Fetching...</option>';
+    document.getElementById('quant-recommended').innerText = "-";
+    document.getElementById('btn-step-3').disabled = true;
+
+    setTimeout(() => {
+      let quants = [];
+      if (familyId === 'parallax-2') {
+        quants = [
+          { name: 'Q2_K', size: '3.83 GB', vram: 4.5 },
+          { name: 'Q4_K_M', size: '5.63 GB', vram: 6.5 },
+          { name: 'Q5_K_M', size: '6.47 GB', vram: 7.5 },
+          { name: 'Q6_K', size: '7.36 GB', vram: 8.5 },
+          { name: 'Q8_0', size: '9.53 GB', vram: 11 },
+          { name: 'BF16', size: '17.9 GB', vram: 20 }
+        ];
+      } else if (familyId === 'parallax-2-mini-preview') {
+        quants = [{ name: 'Q4_K_M', size: '542 MB', vram: 0.542 }];
+      }
+
+      availableQuants = quants;
+      let best = quants[0];
+      for (let q of quants) {
+        if (q.vram <= (detectedVram - 1)) best = q;
+      }
+      recommendedQuant = best;
+      if (best.vram > detectedVram) best = quants[0];
+
+      document.getElementById('quant-status').innerText = `${quants.length} quantizations found`;
+      document.getElementById('quant-status').classList.add('success');
+      document.getElementById('quant-recommended').innerText = `${best.name} (${best.size})`;
+
+      const select = document.getElementById('quant-select');
+      select.innerHTML = '';
+      quants.forEach(q => {
+        const opt = document.createElement('option');
+        opt.value = q.name;
+        opt.text = `${q.name} (${q.size})`;
+        if (q.name === best.name) opt.selected = true;
+        select.appendChild(opt);
+      });
+      document.getElementById('btn-step-3').disabled = false;
+      updateDownloadSize();
+    }, 1200);
+  }
+
+  function updateDownloadSize() {
+    const sel = document.getElementById('quant-select').value;
+    const q = availableQuants.find(x => x.name === sel);
+    if (q) document.getElementById('model-progress-label').innerText = `Ready to download ${selectedFamily}-${q.name}.gguf (${q.size})`;
+  }
+
+  function startModelDownload() {
+    const btn = document.getElementById('btn-step-3');
+    const progressBox = document.getElementById('model-progress-box');
+    const progressBar = document.getElementById('model-progress-bar');
+    const progressPct = document.getElementById('model-progress-pct');
+    const label = document.getElementById('model-progress-label');
+
+    btn.disabled = true;
+    progressBox.classList.add('active');
+    let pct = 0;
+    const interval = setInterval(() => {
+      pct += Math.random() * 8;
+      if (pct > 100) pct = 100;
+      progressBar.style.width = pct + '%';
+      progressPct.innerText = Math.floor(pct) + '%';
+      label.innerText = `Downloading ${selectedFamily}-${document.getElementById('quant-select').value}.gguf...`;
+      if (pct === 100) {
+        clearInterval(interval);
+        label.innerText = "Download complete. Verifying hash...";
+        setTimeout(() => {
+          label.innerText = "Model verified and ready.";
+          btn.innerText = "Continue";
+          btn.disabled = false;
+          btn.onclick = () => goToStep(4);
+        }, 800);
+      }
+    }, 200);
+  }
+
+  // ── STEP 4: LAUNCH ──
+  function startLaunchSequence() {
+    const health = document.getElementById('launch-health');
+    const save = document.getElementById('launch-save');
+    const ui = document.getElementById('launch-ui');
+    const btn = document.getElementById('btn-step-4');
+
+    health.innerText = "Running..."; health.className = "data-value";
+    save.innerText = "Pending..."; save.className = "data-value";
+    ui.innerText = "Pending..."; ui.className = "data-value";
+
+    setTimeout(() => {
+      health.innerText = "OK"; health.classList.add('success');
+      save.innerText = "Writing config...";
+    }, 1000);
+    setTimeout(() => {
+      save.innerText = "Saved to ~/.parallax/"; save.classList.add('success');
+      ui.innerText = "Initializing...";
+    }, 2000);
+    setTimeout(() => {
+      ui.innerText = "Ready"; ui.classList.add('success');
+      btn.disabled = false;
+      btn.innerText = "Open Chat UI";
+    }, 3000);
+  }
+
+  // ── TRANSITION TO CHAT UI ──
+  function finishSetup() {
+    document.getElementById('setup-wizard').classList.add('hidden');
+    document.getElementById('chat-ui').classList.remove('hidden');
+    document.getElementById('topbar-version').innerText = `Running ${selectedFamily} (${document.getElementById('quant-select').value})`;
+    document.getElementById('chat-input').focus();
+  }
+
+  // ══════════════════════════════════════════
+  // CHAT UI LOGIC
+  // ══════════════════════════════════════════
+  const chatInput = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('send-btn');
+  const chatScroll = document.getElementById('chat-scroll');
+  const chatInner = document.getElementById('chat-inner');
+  const welcomeScreen = document.getElementById('welcome-screen');
+  let isGenerating = false;
+
+  // Auto-resize textarea
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
+    sendBtn.disabled = !chatInput.value.trim() || isGenerating;
+  });
+
+  // Send on Enter
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (chatInput.value.trim() && !isGenerating) sendMessage();
+    }
+  });
+
+  sendBtn.onclick = () => sendMessage();
+
+  function appendMessage(role, text) {
+    if (welcomeScreen) welcomeScreen.remove();
+    const msg = document.createElement('div');
+    msg.className = `msg ${role}`;
+    msg.innerHTML = `
+      <div class="msg-avatar">${role === 'user' ? 'U' : 'P'}</div>
+      <div class="msg-content">
+        <div class="msg-role">${role === 'user' ? 'You' : 'Parallax 2'}</div>
+        <div class="msg-body">${text}</div>
+      </div>
+    `;
+    chatInner.appendChild(msg);
+    chatScroll.scrollTop = chatScroll.scrollHeight;
+    return msg.querySelector('.msg-body');
+  }
+
+  async function sendMessage() {
+    const text = chatInput.value.trim();
+    if (!text || isGenerating) return;
+
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+    sendBtn.disabled = true;
+    isGenerating = true;
+
+    appendMessage('user', text);
+    const aiBody = appendMessage('assistant', 'Thinking...');
+
+    try {
+      // ═══════════════════════════════════════════════════════════
+      // IN A REAL APP: You would invoke the Rust backend here.
+      // Example:
+      // const response = await window.__TAURI__.core.invoke('chat', { prompt: text });
+      // aiBody.innerText = response;
+      // ═══════════════════════════════════════════════════════════
+
+      // For now, we simulate a response.
+      setTimeout(() => {
+        aiBody.innerText = "This is a simulated response from the Parallax 2 model running locally. In the real app, this text will stream directly from the llama.cpp backend via a Tauri command.";
+        isGenerating = false;
+        sendBtn.disabled = !chatInput.value.trim();
+        chatScroll.scrollTop = chatScroll.scrollHeight;
+      }, 1500);
+
+    } catch (e) {
+      aiBody.innerText = "Error: " + e;
+      isGenerating = false;
+      sendBtn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
