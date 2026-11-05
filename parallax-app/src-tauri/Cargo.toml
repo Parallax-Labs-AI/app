@@ -1,11 +1,26 @@
 [package]
 name = "parallax-app"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-edition = "2024"
+version = "0.3.0"
+description = "Parallax App"
+edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = "0.3"
+tokio = { version = "1", features = ["full"] }
+dirs = "5"
+sysinfo = "0.30"
+sha2 = "0.10"
+zip = "2"
+tar = "0.4"
+flate2 = "1"
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -13,18 +28,6 @@ edition = "2024"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "parallax_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
-[dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-sysinfo = "0.30"
-gfxinfo = "0.1.2"
-
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

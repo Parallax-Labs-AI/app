@@ -1,0 +1,12 @@
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\ico-9da67760fefb858d.d: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\macros.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\bmpdepth.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\icondir.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\image.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\restype.rs
+
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\libico-9da67760fefb858d.rlib: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\macros.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\bmpdepth.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\icondir.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\image.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\restype.rs
+
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\libico-9da67760fefb858d.rmeta: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\macros.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\bmpdepth.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\icondir.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\image.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\restype.rs
+
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\lib.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\macros.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\bmpdepth.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\icondir.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\image.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ico-0.6.0\src\restype.rs:

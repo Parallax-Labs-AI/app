@@ -1,0 +1,10 @@
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\tauri_runtime-81c6e5078727b310.d: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\dpi.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\monitor.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\webview.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\webview_permissions.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\window.rs
+
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\libtauri_runtime-81c6e5078727b310.rmeta: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\dpi.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\monitor.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\webview.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\webview_permissions.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\window.rs
+
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\lib.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\dpi.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\monitor.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\webview.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\webview_permissions.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tauri-runtime-2.12.2\src\window.rs:

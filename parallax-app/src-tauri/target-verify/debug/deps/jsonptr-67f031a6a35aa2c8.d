@@ -1,0 +1,17 @@
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\jsonptr-67f031a6a35aa2c8.d: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\assign.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\delete.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\resolve.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\diagnostic.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\pointer.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\pointer\slice.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\token.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\index.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\component.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\../README.md
+
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\libjsonptr-67f031a6a35aa2c8.rmeta: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\assign.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\delete.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\resolve.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\diagnostic.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\pointer.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\pointer\slice.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\token.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\index.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\component.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\../README.md
+
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\lib.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\assign.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\delete.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\resolve.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\diagnostic.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\pointer.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\pointer\slice.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\token.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\index.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\component.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jsonptr-0.7.1\src\../README.md:
+
+# env-dep:CARGO_PKG_VERSION=0.7.1

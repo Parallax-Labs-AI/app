@@ -1,0 +1,14 @@
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\serde-6ba48e4f3596dcf9.d: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\build\serde-83f1f3c388fa575e\out/private.rs
+
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\libserde-6ba48e4f3596dcf9.rlib: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\build\serde-83f1f3c388fa575e\out/private.rs
+
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\deps\libserde-6ba48e4f3596dcf9.rmeta: C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\build\serde-83f1f3c388fa575e\out/private.rs
+
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs:
+C:\Users\William\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs:
+C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\build\serde-83f1f3c388fa575e\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\William\\app\\parallax-app\\src-tauri\\target-verify\\debug\\build\\serde-83f1f3c388fa575e\\out

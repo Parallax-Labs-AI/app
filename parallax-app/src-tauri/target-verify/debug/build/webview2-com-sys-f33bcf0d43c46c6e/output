@@ -1,0 +1,2 @@
+cargo:rustc-link-search=native=C:\Users\William\app\parallax-app\src-tauri\target-verify\debug\build\webview2-com-sys-f33bcf0d43c46c6e\out\x64
+cargo:rustc-link-lib=advapi32
