@@ -1,0 +1,9 @@
+node_modules/
+dist/
+src-tauri/target/
+.DS_Store
+*.gguf
+*.part
+src-tauri/gen/
+src-tauri/resources/runtime-crt/*.dll
+/release/

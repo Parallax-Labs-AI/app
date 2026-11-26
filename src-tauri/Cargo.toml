@@ -1,0 +1,37 @@
+[package]
+name = "parallax-app"
+version = "0.5.2"
+edition = "2021"
+build = "build.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1"
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+cap-std = "=4.0.3"
+flate2 = "1"
+fs2 = "0.4"
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sysinfo = "0.37"
+tar = "0.4"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tempfile = "3"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "time", "sync"] }
+tokio-util = "0.7"
+uuid = { version = "1", features = ["v4"] }
+zip = { version = "4", default-features = false, features = ["deflate"] }
+
+[profile.dev.package.sha2]
+opt-level = 3

@@ -1,0 +1,10 @@
+{
+  "build": {
+    "beforeBuildCommand": "node scripts/prepare-windows-runtime.mjs && npm run build"
+  },
+  "bundle": {
+    "resources": {
+      "resources/runtime-crt/": "runtime-crt/"
+    }
+  }
+}

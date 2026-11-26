@@ -1,0 +1,88 @@
+[
+  {
+    "id": "parallax-2-mini",
+    "description": "A compact model for everyday questions, writing, and code.",
+    "repo": "parallaxlabs/parallax-2-mini",
+    "revision": "6067374875c236c5998d2cafdce705711d7cd3e5",
+    "architecture": "qwen35",
+    "context": 262144,
+    "license": "apache-2.0",
+    "status": "available",
+    "variants": [
+      {
+        "file": "parallax-2-mini.Q3_K_M.gguf",
+        "quantization": "Q3_K_M",
+        "bytes": 2318806848,
+        "sha256": "50eac7828ec93eb00098f62aa123a6440289f0a10651fe7839e8db7ee1603e31"
+      },
+      {
+        "file": "parallax-2-mini.Q4_K_M.gguf",
+        "quantization": "Q4_K_M",
+        "bytes": 2783446848,
+        "sha256": "918571f5044c1bb0cd412d660ebcc35f24f467e86293e28067f271fea49c277b"
+      },
+      {
+        "file": "parallax-2-mini.Q6_K.gguf",
+        "quantization": "Q6_K",
+        "bytes": 3563028288,
+        "sha256": "c5e2fa9076c437f0d631a856cac317290a6ee9adc843098d67d3df575ffd36ef"
+      },
+      {
+        "file": "parallax-2-mini.Q8_0.gguf",
+        "quantization": "Q8_0",
+        "bytes": 4610580288,
+        "sha256": "ee5ed0b078088b4aa3f0f6db773bbb0791015a36da6379d34347f9c7d183b941"
+      }
+    ],
+    "name": "Parallax 2 Mini"
+  },
+  {
+    "id": "parallax-2",
+    "name": "Parallax 2",
+    "description": "More capacity for complex reasoning, writing, and code.",
+    "repo": "parallaxlabs/parallax-2",
+    "revision": "a42e0c2211757f114b9925f8abb6360ee63c8135",
+    "architecture": "qwen35",
+    "context": 262144,
+    "license": "apache-2.0",
+    "status": "available",
+    "variants": [
+      {
+        "file": "parallax-2-Q2_K.gguf",
+        "quantization": "Q2_K",
+        "bytes": 3827262016,
+        "sha256": "cff7f062d9f27abd6a6370c169cc8989be4748b2e6d3134f92c4d41442648540"
+      },
+      {
+        "file": "parallax-2-Q4_K_M.gguf",
+        "quantization": "Q4_K_M",
+        "bytes": 5629108800,
+        "sha256": "108c35e5015902d0faade9557f2eea683759880a0351ee101ee04135ea21d9ad"
+      },
+      {
+        "file": "parallax-2-Q5_K_M.gguf",
+        "quantization": "Q5_K_M",
+        "bytes": 6467969600,
+        "sha256": "eab029e5db30da87ebae58616d1b54be762f007c96534535926b1969e685573e"
+      },
+      {
+        "file": "parallax-2-Q6_K.gguf",
+        "quantization": "Q6_K",
+        "bytes": 7359259200,
+        "sha256": "4ce9f7bab19fdabdb78bb7f3aa62ead0bd04f2ad8418023d3daf094d12edc9d8"
+      },
+      {
+        "file": "parallax-2-Q8_0.gguf",
+        "quantization": "Q8_0",
+        "bytes": 9527501376,
+        "sha256": "5b23edd57573fc3e164381d317fe3fdb680dd1921296f582292bcf2d33c21169"
+      },
+      {
+        "file": "parallax-2-bf16.gguf",
+        "quantization": "BF16",
+        "bytes": 17920696896,
+        "sha256": "1f56ab3f1b19be6ee84fc4eba2c5b8e9321520d7ce06458a8c133a3abc8685b7"
+      }
+    ]
+  }
+]

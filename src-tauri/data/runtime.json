@@ -1,0 +1,111 @@
+{
+  "release": "b12675",
+  "targets": [
+    {
+      "os": "macos",
+      "arch": "aarch64",
+      "backend": "metal",
+      "assets": [
+        {
+          "name": "llama-b12675-bin-macos-arm64.tar.gz",
+          "size": 16804336,
+          "sha256": "70c8f63d7b56477f950b12071d6ea2ef1a0d39a416779359dbb80a1d98da1626"
+        }
+      ]
+    },
+    {
+      "os": "macos",
+      "arch": "x86_64",
+      "backend": "metal",
+      "assets": [
+        {
+          "name": "llama-b12675-bin-macos-x64.tar.gz",
+          "size": 12534845,
+          "sha256": "bb7990a00684d6029804c9a37f8752e02d88b71b365882929b7588d6d3165390"
+        }
+      ]
+    },
+    {
+      "os": "linux",
+      "arch": "x86_64",
+      "backend": "cpu",
+      "assets": [
+        {
+          "name": "llama-b12675-bin-ubuntu-x64.tar.gz",
+          "size": 23358631,
+          "sha256": "c4f5ff106835e3ec8a68509bac07286318c884238cec72de4ee0753e80d35157"
+        }
+      ]
+    },
+    {
+      "os": "linux",
+      "arch": "x86_64",
+      "backend": "vulkan",
+      "assets": [
+        {
+          "name": "llama-b12675-bin-ubuntu-vulkan-x64.tar.gz",
+          "size": 37035688,
+          "sha256": "ccefdd9d7c5ff33deb483d34c33c2bb1c24d1a5fd70013eca0b47908f0b351f3"
+        }
+      ]
+    },
+    {
+      "os": "linux",
+      "arch": "x86_64",
+      "backend": "cuda",
+      "assets": [
+        {
+          "name": "llama-b12675-bin-ubuntu-cuda-12.8-x64.tar.gz",
+          "size": 220261389,
+          "sha256": "528558d3f21fdce03f94c1727486dda4e8bdeaadff8eea5f07918aa83f58d52b"
+        },
+        {
+          "name": "cudart-llama-b12675-bin-ubuntu-cuda-12.8-x64.tar.gz",
+          "size": 594372523,
+          "sha256": "9baea327a07b8ecb6d91d6a6a773fe6034a4b47573930cc8d06a8a292edc43ac"
+        }
+      ]
+    },
+    {
+      "os": "windows",
+      "arch": "x86_64",
+      "backend": "cpu",
+      "assets": [
+        {
+          "name": "llama-b12675-bin-win-cpu-x64.zip",
+          "size": 25196352,
+          "sha256": "bc362be03528651701e6218672bb0cbf48b55ba7acad0eb5006449567f4cf821"
+        }
+      ]
+    },
+    {
+      "os": "windows",
+      "arch": "x86_64",
+      "backend": "vulkan",
+      "assets": [
+        {
+          "name": "llama-b12675-bin-win-vulkan-x64.zip",
+          "size": 39041944,
+          "sha256": "b3285ef7e298fb292b971b79c3bad9a50ea79c470b1e83721dd0ebf4783d71a5"
+        }
+      ]
+    },
+    {
+      "os": "windows",
+      "arch": "x86_64",
+      "backend": "cuda",
+      "assets": [
+        {
+          "name": "llama-b12675-bin-win-cuda-12.4-x64.zip",
+          "size": 358131652,
+          "sha256": "8eea9d965dc82d8f5ef151b4140e5c85d203ed378804b1d8eb37bca4449ad515"
+        },
+        {
+          "name": "cudart-llama-bin-win-cuda-12.4-x64.zip",
+          "size": 391443627,
+          "sha256": "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6"
+        }
+      ]
+    }
+  ]
+}
