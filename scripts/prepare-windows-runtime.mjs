@@ -3,6 +3,13 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+const destination = fileURLToPath(new URL('../src-tauri/resources/runtime-crt/', import.meta.url))
+await mkdir(destination, { recursive: true })
+
+if (process.platform !== 'win32' && !process.argv.includes('--force')) {
+  process.exit(0)
+}
+
 async function findCrtDir() {
   // 1. Native Windows Visual Studio Developer Shell
   if (process.env.VCToolsRedistDir) {
@@ -24,10 +31,8 @@ async function findCrtDir() {
 }
 
 const source = await findCrtDir()
-const destination = fileURLToPath(new URL('../src-tauri/resources/runtime-crt/', import.meta.url))
 const dependencies = ['msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll']
 
-await mkdir(destination, { recursive: true })
 for (const file of dependencies) {
   await copyFile(join(source, file), join(destination, file))
 }

@@ -3,7 +3,7 @@ name: 'Release Tauri App'
 on:
   push:
     tags:
-      - 'v*' # Triggers automatically whenever you push a version tag like v0.1.0
+      - 'v*'
 
 jobs:
   publish-tauri:
@@ -13,11 +13,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest' # Apple Silicon (M1/M2/M3/M4)
+          - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
-          - platform: 'macos-latest' # Intel Mac (cross-compiled)
+          - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
-          - platform: 'windows-latest' # Windows x64 (.msi & .exe)
+          - platform: 'windows-latest'
             args: ''
 
     runs-on: ${{ matrix.platform }}
@@ -40,7 +40,11 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Install frontend dependencies
-        run: npm install # Change to yarn install, pnpm install, or bun install if needed
+        run: npm install
+
+      - name: Setup MSVC Developer Command Prompt (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build and upload Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -53,4 +57,3 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
-
