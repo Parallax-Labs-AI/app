@@ -40,6 +40,12 @@ pub struct Conversation {
     pub updated: i64,
 }
 
+#[derive(Serialize)]
+pub struct ProjectConversation {
+    pub project: crate::agent::Project,
+    pub conversation: Conversation,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Message {
     pub id: i64,
@@ -47,6 +53,7 @@ pub struct Message {
     pub content: String,
     pub reasoning: String,
     pub search_failed: bool,
+    pub squadron: Vec<crate::squadron::Run>,
 }
 
 #[derive(Debug, Serialize)]
@@ -88,7 +95,7 @@ fn read_conversation(row: &Row<'_>) -> rusqlite::Result<Conversation> {
 
 fn read_messages(db: &Connection, id: &str) -> Result<Vec<Message>> {
     let mut query = db.prepare(
-        "SELECT id,role,content,reasoning,search_failed FROM messages WHERE chat=? ORDER BY id",
+        "SELECT id,role,content,reasoning,search_failed,squadron FROM messages WHERE chat=? ORDER BY id",
     )?;
     let rows = query.query_map([id], |r| {
         Ok(Message {
@@ -97,6 +104,13 @@ fn read_messages(db: &Connection, id: &str) -> Result<Vec<Message>> {
             content: r.get(2)?,
             reasoning: r.get(3)?,
             search_failed: r.get(4)?,
+            squadron: serde_json::from_str(&r.get::<_, String>(5)?).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    5,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -117,7 +131,7 @@ impl Database {
                 CREATE TABLE pending_downloads(id TEXT PRIMARY KEY, directory TEXT NOT NULL);
                 PRAGMA user_version=1; COMMIT;")?;
         }
-        ensure!(version <= 4, "This database requires a newer Parallax App.");
+        ensure!(version <= 5, "This database requires a newer Parallax App.");
         if version < 2 {
             db.execute_batch(
                 "BEGIN;
@@ -137,6 +151,9 @@ impl Database {
             db.execute_batch(
                 "BEGIN; ALTER TABLE chats ADD COLUMN project TEXT; PRAGMA user_version=4; COMMIT;",
             )?;
+        }
+        if version < 5 {
+            db.execute_batch("BEGIN; ALTER TABLE messages ADD COLUMN squadron TEXT NOT NULL DEFAULT '[]'; PRAGMA user_version=5; COMMIT;")?;
         }
         Ok(Self(Mutex::new(db)))
     }
@@ -276,12 +293,62 @@ impl Database {
         let db = self.db()?;
         let mut query = db.prepare(
             "SELECT id,title,system_prompt,updated FROM chats
-            WHERE ?1='' OR instr(lower(title),lower(?1))>0 OR EXISTS(
-                SELECT 1 FROM messages WHERE chat=chats.id AND (instr(lower(content),lower(?1))>0 OR instr(lower(reasoning),lower(?1))>0))
+            WHERE project IS NULL AND (?1='' OR instr(lower(title),lower(?1))>0 OR EXISTS(
+                SELECT 1 FROM messages WHERE chat=chats.id AND (instr(lower(content),lower(?1))>0 OR instr(lower(reasoning),lower(?1))>0)))
             ORDER BY updated DESC,rowid DESC",
         )?;
         let rows = query.query_map([search], read_conversation)?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn project_conversations(&self) -> Result<Vec<ProjectConversation>> {
+        let db = self.db()?;
+        let mut statement = db.prepare("SELECT id,title,system_prompt,updated,project FROM chats WHERE project IS NOT NULL ORDER BY updated DESC,rowid DESC")?;
+        let rows = statement.query_map([], |row| {
+            Ok((read_conversation(row)?, row.get::<_, String>(4)?))
+        })?;
+        rows.map(|row| {
+            let (conversation, record) = row?;
+            Ok(ProjectConversation {
+                conversation,
+                project: serde_json::from_str(&record)?,
+            })
+        })
+        .collect()
+    }
+
+    pub fn open_project_conversation(&self, project: &crate::agent::Project) -> Result<Thread> {
+        let prompt = self.settings()?.default_system_prompt;
+        let record = serde_json::to_string(project)?;
+        let id = {
+            let db = self.db()?;
+            let mut statement = db.prepare("SELECT id,project FROM chats WHERE project IS NOT NULL ORDER BY updated DESC,rowid DESC")?;
+            let rows = statement.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            let mut existing = None;
+            for row in rows {
+                let (id, record) = row?;
+                let saved: crate::agent::Project = serde_json::from_str(&record)?;
+                if saved.path == project.path
+                    || saved
+                        .path
+                        .canonicalize()
+                        .is_ok_and(|path| path == project.path)
+                {
+                    existing = Some(id);
+                    break;
+                }
+            }
+            if let Some(id) = existing {
+                id
+            } else {
+                let id = Uuid::new_v4().to_string();
+                db.execute("INSERT INTO chats(id,title,system_prompt,updated,project) VALUES(?,'New chat',?,unixepoch(),?)", params![id, prompt, record])?;
+                id
+            }
+        };
+        self.thread(&id)
     }
 
     pub fn thread(&self, id: &str) -> Result<Thread> {
@@ -461,7 +528,7 @@ impl Database {
         let db = self.db()?;
         if final_write && text.is_empty() && reasoning.is_empty() {
             db.execute(
-                "DELETE FROM messages WHERE id=? AND role='assistant' AND search_failed=0",
+                "DELETE FROM messages WHERE id=? AND role='assistant' AND search_failed=0 AND squadron='[]'",
                 [message],
             )?;
         } else {
@@ -470,6 +537,14 @@ impl Database {
                 params![text, reasoning, message],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn save_squadron(&self, message: i64, runs: &[crate::squadron::Run]) -> Result<()> {
+        self.db()?.execute(
+            "UPDATE messages SET squadron=? WHERE id=? AND role='assistant'",
+            params![serde_json::to_string(runs)?, message],
+        )?;
         Ok(())
     }
 
@@ -483,7 +558,7 @@ impl Database {
 
     pub fn recover_interrupted(&self) -> Result<()> {
         self.db()?.execute(
-            "DELETE FROM messages WHERE role='assistant' AND content='' AND reasoning='' AND search_failed=0",
+            "DELETE FROM messages WHERE role='assistant' AND content='' AND reasoning='' AND search_failed=0 AND squadron='[]'",
             [],
         )?;
         Ok(())
@@ -524,6 +599,59 @@ mod tests {
         db.update_chat(&chat.id, "Astronomy", "").unwrap();
         db.save_generated_title(&chat.id, "Mars in Motion").unwrap();
         assert_eq!(db.thread(&chat.id).unwrap().conversation.title, "Astronomy");
+    }
+
+    #[test]
+    fn reopening_a_project_restores_its_chat_and_squadron_activity() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("app.sqlite");
+        let db = Database::open(&path).unwrap();
+        let ordinary = db.create_chat().unwrap();
+        let project = crate::agent::Project {
+            name: "Design".into(),
+            path: temp.path().canonicalize().unwrap(),
+        };
+        let id = db
+            .open_project_conversation(&project)
+            .unwrap()
+            .conversation
+            .id;
+        let (message, _) = db
+            .begin_turn(
+                &id,
+                Turn::Send {
+                    content: "Review the project".into(),
+                },
+            )
+            .unwrap();
+        db.save_squadron(
+            message,
+            &[vec![crate::squadron::Worker {
+                assignment: "Review the documentation".into(),
+                query: None,
+                outcome: Some(crate::squadron::Outcome {
+                    status: crate::squadron::Status::Complete,
+                    report: "Documentation reviewed".into(),
+                }),
+            }]],
+        )
+        .unwrap();
+        db.write_reply(message, "", "", true).unwrap();
+        drop(db);
+
+        let db = Database::open(&path).unwrap();
+        db.recover_interrupted().unwrap();
+        assert_eq!(db.list("").unwrap()[0].id, ordinary.id);
+        assert!(db.list("Review the project").unwrap().is_empty());
+        let thread = db.open_project_conversation(&project).unwrap();
+        assert_eq!(thread.conversation.id, id);
+        assert_eq!(thread.project, Some(project));
+        assert_eq!(db.project_conversations().unwrap().len(), 1);
+        let worker = &thread.messages[1].squadron[0][0];
+        assert_eq!(
+            worker.outcome.as_ref().unwrap().report,
+            "Documentation reviewed"
+        );
     }
 
     #[test]

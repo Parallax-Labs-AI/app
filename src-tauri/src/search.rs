@@ -40,7 +40,9 @@ pub fn query(arguments: &str) -> Result<String> {
 }
 
 pub async fn prepare(root: &Path, client: &Client, cancel: &CancellationToken) -> Result<()> {
-    exchange(root, client, None, cancel).await.map(|_| ())
+    exchange(root, client, None, false, cancel)
+        .await
+        .map(|_| ())
 }
 
 pub async fn run(
@@ -49,7 +51,252 @@ pub async fn run(
     query: &str,
     cancel: &CancellationToken,
 ) -> Result<String> {
-    exchange(root, client, Some(query), cancel).await
+    exchange(root, client, Some(query), false, cancel).await
+}
+
+pub async fn news(
+    root: &Path,
+    client: &Client,
+    query: &str,
+    cancel: &CancellationToken,
+) -> Result<String> {
+    let feeds = roundup_feeds(query);
+    if !feeds.is_empty() && !cancel.is_cancelled() {
+        let local_date = chrono::Local::now().date_naive();
+        let batches = futures_util::future::join_all(
+            feeds
+                .iter()
+                .map(|feed| publisher_feed(client, feed, local_date, cancel)),
+        )
+        .await;
+        let mut seen = std::collections::HashSet::new();
+        let mut stories: Vec<_> = batches
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|(_, _, url)| seen.insert(url.clone()))
+            .collect();
+        stories.sort_by(|left, right| right.0.cmp(&left.0));
+        if !stories.is_empty() {
+            return Ok(stories
+                .into_iter()
+                .take(6)
+                .map(|(date, title, url)| {
+                    format!(
+                        "- {title} ({})\n  {url}",
+                        date.with_timezone(&chrono::Local)
+                            .format("%Y-%m-%d %H:%M %Z")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"));
+        }
+    }
+    exchange(root, client, Some(query), true, cancel).await
+}
+
+fn roundup_feeds(query: &str) -> &'static [&'static str] {
+    let query = query.to_ascii_lowercase();
+    if query.contains("site:")
+        || ![
+            "top ",
+            "today",
+            "latest",
+            "trending",
+            "breaking",
+            "headlines",
+            "current",
+        ]
+        .iter()
+        .any(|word| query.contains(word))
+    {
+        return &[];
+    }
+    if ["technology", " tech ", "science"]
+        .iter()
+        .any(|word| query.contains(word))
+    {
+        return &[
+            "https://feeds.bbci.co.uk/news/technology/rss.xml",
+            "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+        ];
+    }
+    if ["business", "economy", "finance"]
+        .iter()
+        .any(|word| query.contains(word))
+    {
+        return &["https://feeds.bbci.co.uk/news/business/rss.xml"];
+    }
+    if [
+        "world news",
+        "global news",
+        "top news",
+        "hot news",
+        "breaking news",
+        "top headlines",
+        "news today",
+        "latest news",
+        "trending news",
+    ]
+    .iter()
+    .any(|word| query.contains(word))
+    {
+        return &[
+            "https://feeds.bbci.co.uk/news/world/rss.xml",
+            "https://www.theguardian.com/world/rss",
+        ];
+    }
+    &[]
+}
+
+#[derive(serde::Deserialize)]
+struct Feed {
+    channel: Channel,
+}
+#[derive(serde::Deserialize)]
+struct Channel {
+    #[serde(default)]
+    item: Vec<Article>,
+}
+#[derive(Default, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct Article {
+    title: String,
+    link: String,
+    pub_date: String,
+}
+async fn publisher_feed(
+    client: &Client,
+    url: &str,
+    today: chrono::NaiveDate,
+    cancel: &CancellationToken,
+) -> Result<Vec<(chrono::DateTime<chrono::FixedOffset>, String, String)>> {
+    let load = async {
+        let mut response = client
+            .get(url)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?
+            .error_for_status()?;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            ensure!(
+                bytes.len() + chunk.len() <= 512 * 1024,
+                "News feed exceeds size limit."
+            );
+            bytes.extend_from_slice(&chunk);
+        }
+        parse_publisher_feed(std::str::from_utf8(&bytes)?, today)
+    };
+    tokio::select! {
+        _ = cancel.cancelled() => anyhow::bail!("Search stopped."),
+        result = load => result,
+    }
+}
+
+fn parse_publisher_feed(
+    body: &str,
+    today: chrono::NaiveDate,
+) -> Result<Vec<(chrono::DateTime<chrono::FixedOffset>, String, String)>> {
+    let feed: Feed = quick_xml::de::from_str(body)?;
+    Ok(feed
+        .channel
+        .item
+        .into_iter()
+        .filter_map(|article| {
+            let date = chrono::DateTime::parse_from_rfc2822(&article.pub_date).ok()?;
+            let url = reqwest::Url::parse(&article.link).ok()?;
+            let title = article
+                .title
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if date.with_timezone(&chrono::Local).date_naive() != today
+                || date > chrono::Utc::now()
+                || url.scheme() != "https"
+                || !url.username().is_empty()
+                || url.password().is_some()
+                || !url.host_str().is_some_and(|host| {
+                    matches!(
+                        host,
+                        "www.bbc.com" | "www.bbc.co.uk" | "www.theguardian.com"
+                    )
+                })
+                || !recent_article(&url, "today", today)
+                || title.is_empty()
+            {
+                return None;
+            }
+            Some((date, title.chars().take(160).collect(), url.into()))
+        })
+        .collect())
+}
+
+fn recent_article(url: &reqwest::Url, age: &str, today: chrono::NaiveDate) -> bool {
+    let host = url.host_str().unwrap_or_default();
+    let path = url.path().trim_end_matches('/').to_ascii_lowercase();
+    if host == "wikipedia.org"
+        || host.ends_with(".wikipedia.org")
+        || matches!(
+            path.as_str(),
+            "" | "/world"
+                | "/news"
+                | "/breaking-news"
+                | "/headlines"
+                | "/latest"
+                | "/trending"
+                | "/trending-news"
+                | "/news/world"
+                | "/news/technology"
+                | "/news/business"
+                | "/news/science_and_environment"
+                | "/world/all"
+        )
+        || path.split('/').any(|segment| {
+            matches!(
+                segment,
+                "hub" | "category" | "categories" | "topic" | "topics" | "tag" | "tags"
+            )
+        })
+    {
+        return false;
+    }
+    let age = age.trim().to_ascii_lowercase();
+    if let Some(date) = age
+        .get(..10)
+        .and_then(|date| chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").ok())
+    {
+        return date == today;
+    }
+    if matches!(age.as_str(), "today" | "just now") {
+        return true;
+    }
+    let mut parts = age.split_ascii_whitespace();
+    let Some(amount) = parts.next().and_then(|part| part.parse::<u32>().ok()) else {
+        return false;
+    };
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some("hour" | "hours"), Some("ago"), None) => amount < 24,
+        (Some("minute" | "minutes" | "second" | "seconds"), Some("ago"), None) => amount < 60,
+        _ => false,
+    }
+}
+
+pub fn requests_news(message: &str) -> bool {
+    let text = message.to_ascii_lowercase();
+    ["news", "headlines"].iter().any(|word| {
+        text.split(|c: char| !c.is_alphabetic())
+            .any(|part| part == *word)
+    }) && [
+        "today",
+        "latest",
+        "breaking",
+        "right now",
+        "top ",
+        "this morning",
+    ]
+    .iter()
+    .any(|word| text.contains(word))
 }
 
 pub fn is_arithmetic(message: &str) -> bool {
@@ -97,23 +344,95 @@ async fn exchange(
     root: &Path,
     client: &Client,
     query: Option<&str>,
+    news: bool,
     cancel: &CancellationToken,
 ) -> Result<String> {
     let home = root.join("web-search");
-    let uvx = install(&home, client, cancel).await?;
+    fs::create_dir_all(&home).context("Could not create the search runtime directory.")?;
+    #[cfg(windows)]
+    if let Some(uvx) = windows_uvx() {
+        match exchange_with(&home, &uvx, query, news, false, cancel).await {
+            Ok(result) => return Ok(result),
+            Err(error) if cancel.is_cancelled() || !error.is::<McpStartup>() => return Err(error),
+            Err(_) => {}
+        }
+    }
+    let uvx = install(&home, client, cancel)
+        .await
+        .context("Could not prepare the managed uvx executable.")?;
+    exchange_with(&home, &uvx, query, news, true, cancel).await
+}
+
+#[derive(Debug)]
+struct McpStartup(anyhow::Error);
+
+impl std::fmt::Display for McpStartup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "uvx could not start free-search-mcp: {}", self.0)
+    }
+}
+
+impl std::error::Error for McpStartup {}
+
+#[cfg(windows)]
+fn windows_uvx() -> Option<PathBuf> {
+    let paths = std::env::var_os("PATH").unwrap_or_default();
+    let locations = std::env::split_paths(&paths)
+        .chain(std::env::var_os("UV_INSTALL_DIR").map(PathBuf::from))
+        .chain(
+            std::env::var_os("USERPROFILE")
+                .map(|path| PathBuf::from(path).join(".local").join("bin")),
+        )
+        .chain(std::env::var_os("LOCALAPPDATA").map(|path| {
+            PathBuf::from(path)
+                .join("Microsoft")
+                .join("WinGet")
+                .join("Links")
+        }));
+    locations
+        .filter(|path| path.is_absolute())
+        .map(|path| path.join("uvx.exe"))
+        .find(|path| path.is_file())
+}
+
+async fn exchange_with(
+    home: &Path,
+    uvx: &Path,
+    query: Option<&str>,
+    news: bool,
+    managed: bool,
+    cancel: &CancellationToken,
+) -> Result<String> {
     let mut command = Command::new(uvx);
     background(&mut command);
     command.env_clear();
-    for key in ["SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG"] {
+    for key in [
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "LANG",
+        "PATH",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "PROGRAMDATA",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+    ] {
         if let Some(value) = std::env::var_os(key) {
             command.env(key, value);
         }
     }
-    #[cfg(unix)]
-    command.env("PATH", "/usr/bin:/bin");
     #[cfg(windows)]
-    if let Some(root) = std::env::var_os("SystemRoot").map(PathBuf::from) {
-        command.env("PATH", std::env::join_paths([root.join("System32"), root])?);
+    command.env("UV_SYSTEM_CERTS", "true");
+    if managed {
+        command.arg("--managed-python");
     }
     command
         .current_dir(&home)
@@ -122,11 +441,12 @@ async fn exchange(
         .env("SEARCH_MCP_CONFIG_DIR", home.join("config"))
         .env("SEARCH_MCP_CACHE_DIR", home.join("cache"))
         .env("UV_NO_CONFIG", "1")
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONIOENCODING", "utf-8")
         .env("SEARCH_MCP_AGENT_ENGINES", "off")
         .env("SEARCH_MCP_SAFESEARCH", "strict")
         .env("SEARCH_MCP_DOWNLOAD_ENABLED", "false")
         .args([
-            "--managed-python",
             "--python",
             "3.12",
             "--from",
@@ -140,9 +460,11 @@ async fn exchange(
         .stderr(Stdio::null());
     let mut child = tokio::process::Command::from(command)
         .kill_on_drop(true)
-        .spawn()?;
+        .spawn()
+        .map_err(|error| McpStartup(error.into()))?;
     let mut input = child.stdin.take().context("Missing MCP input pipe.")?;
     let mut output = BufReader::new(child.stdout.take().context("Missing MCP output pipe.")?);
+    let mut initialized = false;
     let exchange = async {
         send(&mut input, json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
             "protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"Parallax App","version":env!("CARGO_PKG_VERSION")}
@@ -172,10 +494,17 @@ async fn exchange(
                 .is_some_and(|tools| tools.iter().any(|tool| tool["name"] == "search")),
             "Search tool is unavailable."
         );
+        initialized = true;
         let Some(query) = query else {
             return Ok(String::new());
         };
-        send(&mut input, json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search","arguments":{"query":query,"max_results":4,"engines":["duckduckgo","bing"],"format":"json","use_cache":false}}})).await?;
+        let mut arguments = json!({"query":query,"max_results":4,"engines":["duckduckgo","bing"],"format":"json","use_cache":false});
+        if news {
+            arguments["category"] = json!("news");
+            arguments["freshness"] = json!("day");
+            arguments["max_results"] = json!(8);
+        }
+        send(&mut input, json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search","arguments":arguments}})).await?;
         let result = receive(&mut output, 3).await?;
         ensure!(
             result["isError"] != true,
@@ -204,7 +533,6 @@ async fn exchange(
             .context("Missing search results.")?;
         let snippets = hits
             .iter()
-            .take(4)
             .filter_map(|hit| {
                 let title: String = hit["title"]
                     .as_str()?
@@ -215,7 +543,11 @@ async fn exchange(
                     .take(160)
                     .collect();
                 let url = reqwest::Url::parse(hit["url"].as_str()?).ok()?;
-                if !matches!(url.scheme(), "https" | "http") || url.as_str().len() > 1024 {
+                if !matches!(url.scheme(), "https" | "http")
+                    || url.as_str().len() > 1024
+                    || !url.username().is_empty()
+                    || url.password().is_some()
+                {
                     return None;
                 }
                 let snippet: String = hit["snippet"]
@@ -227,8 +559,24 @@ async fn exchange(
                     .chars()
                     .take(500)
                     .collect();
-                Some(format!("- {title}\n  {url}\n  {snippet}"))
+                let date = hit["published_age"]
+                    .as_str()
+                    .or_else(|| hit["date"].as_str())
+                    .filter(|date| {
+                        !date.is_empty() && date.len() <= 40 && !date.chars().any(char::is_control)
+                    });
+                if title.is_empty()
+                    || news
+                        && !date.is_some_and(|age| {
+                            recent_article(&url, age, chrono::Local::now().date_naive())
+                        })
+                {
+                    return None;
+                }
+                let headline = date.map_or(title.clone(), |date| format!("{title} ({date})"));
+                Some(format!("- {headline}\n  {url}\n  {snippet}"))
             })
+            .take(if news { 6 } else { 4 })
             .collect::<Vec<_>>()
             .join("\n");
         ensure!(
@@ -248,7 +596,11 @@ async fn exchange(
     {
         let _ = child.kill().await;
     }
-    result
+    if initialized {
+        result
+    } else {
+        result.map_err(|error| McpStartup(error).into())
+    }
 }
 
 pub(crate) async fn send(input: &mut tokio::process::ChildStdin, value: Value) -> Result<()> {
@@ -406,6 +758,76 @@ fn extract(source: &Path, dest: &Path, names: [&str; 2], extension: &str) -> Res
 #[cfg(test)]
 mod tests {
     #[test]
+    fn publisher_feed_keeps_only_same_day_articles() {
+        let today = chrono::Local::now().date_naive();
+        let now = chrono::Local::now();
+        let previous = now - chrono::Duration::days(1);
+        let article = |url: &str, date: &str, title: &str| {
+            format!(
+                "<item><title>{title}</title><link>{url}</link><pubDate>{date}</pubDate></item>"
+            )
+        };
+        let records = [
+            article(
+                "https://www.bbc.com/news/articles/example",
+                &now.to_rfc2822(),
+                "A &amp; B",
+            ),
+            article("https://www.bbc.com/news/world", &now.to_rfc2822(), "Index"),
+            article(
+                "https://www.theguardian.com/world/old-story",
+                &previous.to_rfc2822(),
+                "Old story",
+            ),
+            article(
+                "https://example.com/story",
+                &now.to_rfc2822(),
+                "Unrecognized publisher",
+            ),
+        ]
+        .join("");
+        let xml = format!("<rss><channel>{records}</channel></rss>");
+        let articles = parse_publisher_feed(&xml, today).unwrap();
+        assert_eq!(articles.len(), 1);
+        assert_eq!(articles[0].1, "A & B");
+    }
+
+    #[test]
+    fn roundup_requires_article_paths_and_recent_date_evidence() {
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 26).unwrap();
+        for index in [
+            "https://apnews.com/hub/trending-news",
+            "https://news.google.com/topics/CAA",
+            "https://www.thedailyscrumnews.com/category/trending-news",
+            "https://www.nytimes.com/trending",
+        ] {
+            assert!(!recent_article(
+                &reqwest::Url::parse(index).unwrap(),
+                "today",
+                date
+            ));
+        }
+        let article = reqwest::Url::parse("https://example.com/world/specific-article").unwrap();
+        for age in ["", "2026-11-25", "2 days ago", "24 hours ago"] {
+            assert!(!recent_article(&article, age, date));
+        }
+        for age in ["2026-11-26", "today", "2 hours ago", "13 minutes ago"] {
+            assert!(recent_article(&article, age, date));
+        }
+    }
+
+    #[test]
+    fn detects_current_news_without_treating_all_news_topics_as_current() {
+        assert!(super::requests_news("Find top 5 news today"));
+        assert!(super::requests_news(
+            "Can you use Parallax Squadron to collect the latest news right now?"
+        ));
+        assert!(!super::requests_news(
+            "Explain how newspapers print the news"
+        ));
+    }
+
+    #[test]
     fn arithmetic_avoids_search_without_suppressing_search_requests() {
         assert!(super::is_arithmetic("What is 67 times 67?"));
         assert!(super::is_arithmetic("(60 + 7)^2"));
@@ -420,6 +842,23 @@ mod tests {
         assert_eq!(query(r#"{"query":"Apollo 11"}"#).unwrap(), "Apollo 11");
         assert!(query(r#"{"query":"Apollo 11","engines":["codex"]}"#).is_err());
         assert!(query(r#"{"query":"   "}"#).is_err());
+    }
+
+    #[tokio::test]
+    #[ignore = "Uses public news providers"]
+    async fn live_news_search_returns_article_links() {
+        let root = tempfile::tempdir().unwrap();
+        let client = Client::builder().https_only(true).build().unwrap();
+        let result = news(
+            root.path(),
+            &client,
+            "world news today Reuters AP November 26 2026",
+            &CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert!(result.lines().any(|line| line.starts_with("  https://")));
+        assert!(!result.contains("wikipedia.org"));
     }
 
     #[tokio::test]

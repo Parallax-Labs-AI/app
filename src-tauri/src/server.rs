@@ -43,6 +43,7 @@ pub struct Endpoint {
     pub base: String,
     pub secret: String,
     pub context: u32,
+    pub parallel: u32,
     pub model_id: String,
 }
 
@@ -78,6 +79,7 @@ pub async fn start(
     model: &Installed,
     backend: &str,
     context: u32,
+    parallel: u32,
     gpu_layers: Option<u32>,
     client: &Client,
     closing: &CancellationToken,
@@ -96,6 +98,7 @@ pub async fn start(
         let endpoint = Endpoint {
             base: format!("http://127.0.0.1:{port}"),
             context,
+            parallel,
             model_id: model.id.clone(),
             secret: format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
         };
@@ -120,9 +123,9 @@ pub async fn start(
                 "http://127.0.0.1",
                 "--no-slots",
                 "--parallel",
-                "1",
+                &parallel.to_string(),
                 "--ctx-size",
-                &context.to_string(),
+                &crate::memory::parallel_context(context, parallel).to_string(),
                 "--reasoning-format",
                 "deepseek",
             ])
@@ -131,6 +134,14 @@ pub async fn start(
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        if parallel > 1 {
+            helper.args(crate::memory::PARALLEL_BATCH_ARGS);
+            helper.args([
+                "--kv-unified",
+                "--kv-unified-per-slot",
+                &context.to_string(),
+            ]);
+        }
         helper.args(placement(backend, gpu_layers));
         drop(socket);
         let supervisor = helper
@@ -149,6 +160,12 @@ pub async fn start(
                 None => {}
             }
             if ready(client, &managed.endpoint, &model.id).await && !managed.exited() {
+                if parallel > 1 {
+                    tokio::select! {
+                        _ = closing.cancelled() => bail!("Parallax App is closing."),
+                        result = validate_parallel(client, &managed.endpoint) => result?,
+                    }
+                }
                 return Ok(managed);
             }
             ensure!(
@@ -162,6 +179,23 @@ pub async fn start(
         }
     }
     bail!("Could not bind the inference server after three attempts. Try loading again.")
+}
+
+async fn validate_parallel(client: &Client, endpoint: &Endpoint) -> Result<()> {
+    let requests = (0..endpoint.parallel).map(|slot| async move {
+        let response: serde_json::Value = client
+            .post(format!("{}/completion", endpoint.base))
+            .bearer_auth(&endpoint.secret)
+            .timeout(Duration::from_secs(30))
+            .json(&serde_json::json!({"prompt":format!("Say hello, worker {}.", slot + 1),"n_predict":2,"cache_prompt":false}))
+            .send().await?.error_for_status()?.json().await?;
+        ensure!(response["tokens_predicted"].as_u64().is_some_and(|tokens| tokens > 0), "Parallel inference did not generate a token.");
+        Ok::<(), anyhow::Error>(())
+    });
+    futures_util::future::try_join_all(requests)
+        .await
+        .context("Concurrent inference startup check failed.")?;
+    Ok(())
 }
 
 async fn ready(client: &Client, endpoint: &Endpoint, model_id: &str) -> bool {
@@ -280,6 +314,7 @@ mod tests {
             base: format!("http://{}", listener.local_addr().unwrap()),
             secret: "test".into(),
             context: 1024,
+            parallel: 1,
             model_id: "sample".into(),
         };
         std::thread::spawn(move || {

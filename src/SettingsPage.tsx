@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, Cpu, Database, Gauge, MessageSquare, Monitor, RotateCcw, ShieldCheck, Wrench } from 'lucide-react'
+import { ChevronDown, Cpu, Database, Gauge, MessageSquare, Monitor, RotateCcw, ShieldCheck, Users, Wrench } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { backendName, bytes, errorText, type Conversation, type ModelPreferences, type Settings, type Snapshot } from './types'
+import { About } from './About'
 import { AgentTools } from './ToolSettings'
 import { Choice } from './Choice'
 import { ModelPreferencesForm } from './ModelOptions'
@@ -9,12 +10,14 @@ import { ErrorBanner, ProgressView } from './ui'
 
 interface Props {
   snapshot: Snapshot
+  updatePanel: ReactNode
   save: (settings: Settings) => Promise<boolean>
   chooseStorage: () => void
   exportHistory: () => void
   eraseHistory: () => void
   clearAgentPermissions: () => void
   models: ReactNode
+  saveSquadron: (settings: Settings) => Promise<boolean>
   saveContext: (id: string, preferences: ModelPreferences, reload: boolean) => Promise<boolean>
   measureContext: (id: string, custom: number | null) => Promise<void>
   repair: () => void
@@ -28,8 +31,12 @@ function SettingsRow({ label, detail, children }: { label: string; detail?: stri
   return <div className="setting-row"><div><strong>{label}</strong>{detail && <p>{detail}</p>}</div><div className="setting-control">{children}</div></div>
 }
 
-export function SettingsPage({ snapshot, save, chooseStorage, exportHistory, eraseHistory, clearAgentPermissions, models, saveContext, measureContext, repair, retry, busy, conversation, saveConversationPrompt }: Props) {
+export function SettingsPage({ snapshot, updatePanel, save, chooseStorage, exportHistory, eraseHistory, clearAgentPermissions, models, saveSquadron, saveContext, measureContext, repair, retry, busy, conversation, saveConversationPrompt }: Props) {
   const [settings, setSettings] = useState(snapshot.settings)
+  const [accentHex, setAccentHex] = useState(snapshot.settings.customAccent)
+  const validAccent = /^#[0-9a-f]{6}$/i.test(accentHex)
+  const [searchTest, setSearchTest] = useState('')
+  const [checkingSearch, setCheckingSearch] = useState(false)
   const [logs, setLogs] = useState<string[] | null>(null)
   const [logError, setLogError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -40,6 +47,9 @@ export function SettingsPage({ snapshot, save, chooseStorage, exportHistory, era
     agentCommands: snapshot.settings.agentCommands,
     agentAutoRead: snapshot.settings.agentAutoRead,
     agentAutoCreate: snapshot.settings.agentAutoCreate,
+    squadronEnabled: snapshot.settings.squadronEnabled,
+    squadronPreferWorkers: snapshot.settings.squadronPreferWorkers,
+    squadronMaxSlots: snapshot.settings.squadronMaxSlots,
   }
   const dirty = JSON.stringify(generalSettings) !== JSON.stringify(snapshot.settings)
   const field = <K extends keyof Settings>(key: K, value: Settings[K]) => setSettings(current => ({ ...current, [key]: value }))
@@ -48,10 +58,11 @@ export function SettingsPage({ snapshot, save, chooseStorage, exportHistory, era
     catch (error) { setLogError(errorText(error)) }
   }
   return <div className="settings page-content">
-    <div className="page-heading"><div><h1>Settings</h1><p>Make Parallax work the way you want.</p></div></div>
+    <div className="page-heading"><h1>Settings</h1></div>
+    {updatePanel}
     <section className="settings-group">
       <h2><ShieldCheck size={19} /> Agent permissions</h2>
-      <SettingsRow label="Remembered approvals" detail="Apply to one project conversation for this app session. Edits, moves, deletions, and custom commands always ask.">
+      <SettingsRow label="Remembered approvals" detail="Clear remembered workspace permissions and Squadron session approval. Edits, moves, deletions, and custom commands always ask.">
         <button type="button" className="button secondary" disabled={busy} onClick={clearAgentPermissions}>Clear approvals</button>
       </SettingsRow>
     </section>
@@ -59,13 +70,14 @@ export function SettingsPage({ snapshot, save, chooseStorage, exportHistory, era
       savePrograms={agentCommands => save({ ...snapshot.settings, agentCommands })}
       setAutoRead={agentAutoRead => save({ ...snapshot.settings, agentAutoRead })}
       setAutoCreate={agentAutoCreate => save({ ...snapshot.settings, agentAutoCreate })} />
+    <SquadronSettings key={`${snapshot.settings.squadronEnabled}-${snapshot.settings.squadronMaxSlots}-${snapshot.settings.squadronPreferWorkers}`} snapshot={snapshot} busy={busy} save={saveSquadron} />
     {models}
     <ContextSettings snapshot={snapshot} busy={busy} save={saveContext} measure={measureContext} />
     <ConversationPrompt key={conversation?.id} conversation={conversation} busy={busy} save={saveConversationPrompt} />
     <form onSubmit={async event => {
       event.preventDefault()
       setSaving(true)
-      await save(generalSettings)
+      if (settings.accent !== 'custom' || validAccent) await save(generalSettings)
       setSaving(false)
     }}>
       <section className="settings-group">
@@ -82,8 +94,22 @@ export function SettingsPage({ snapshot, save, chooseStorage, exportHistory, era
           { value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' },
         ]} onChange={value => field('theme', value)} /></SettingsRow>
         <SettingsRow label="Accent color"><Choice label="Accent color" value={settings.accent} options={[
-          { value: 'blue', label: 'Blue' }, { value: 'violet', label: 'Violet' }, { value: 'teal', label: 'Teal' },
+          { value: 'blue', label: 'Blue' }, { value: 'violet', label: 'Violet' }, { value: 'teal', label: 'Teal' }, { value: 'custom', label: 'Custom' },
         ]} onChange={value => field('accent', value)} /></SettingsRow>
+        {settings.accent === 'custom' && <SettingsRow label="Custom accent">
+          <div className="accent-picker">
+            <input type="color" aria-label="Pick a custom accent color" value={settings.customAccent} onChange={event => {
+              setAccentHex(event.target.value)
+              field('customAccent', event.target.value)
+            }} />
+            <input type="text" aria-label="Custom accent hex color" aria-invalid={!validAccent} maxLength={7} value={accentHex}
+              onChange={event => {
+                const value = event.target.value
+                setAccentHex(value)
+                if (/^#[0-9a-f]{6}$/i.test(value)) field('customAccent', value)
+              }} />
+          </div>
+        </SettingsRow>}
         <SettingsRow label="Chat text size"><Choice label="Chat text size" value={settings.chatTextSize} options={[
           { value: 'small', label: 'Small' }, { value: 'medium', label: 'Medium' }, { value: 'large', label: 'Large' },
         ]} onChange={value => field('chatTextSize', value)} /></SettingsRow>
@@ -113,10 +139,18 @@ export function SettingsPage({ snapshot, save, chooseStorage, exportHistory, era
         </SettingsRow>
         <button type="button" className="button ghost reset-button" onClick={() => setSettings(current => ({ ...current, acceleration: 'auto', maxTokens: 1024, temperature: 0.7, topP: 0.95, topK: 40, gpuLayers: null }))}><RotateCcw size={15} /> Reset inference defaults</button>
       </details>
-      <div className="settings-save"><button className="button primary" disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save changes'}</button></div>
+      <div className="settings-save"><button className="button primary" disabled={!dirty || saving || (settings.accent === 'custom' && !validAccent)}>{saving ? 'Saving…' : 'Save changes'}</button></div>
     </form>
     <section className="settings-group">
       <h2><Wrench size={19} /> Runtime</h2>
+      <SettingsRow label="Web search"><button type="button" className="button secondary" disabled={busy || checkingSearch} onClick={async () => {
+        setCheckingSearch(true)
+        setSearchTest('Testing the connection…')
+        try { await invoke('test_web_search'); setSearchTest('Web search returned results.') }
+        catch (error) { setSearchTest(errorText(error)) }
+        finally { setCheckingSearch(false) }
+      }}>Test web search</button></SettingsRow>
+      {searchTest && <p className="settings-note" role="status">{searchTest}</p>}
       <SettingsRow label="llama.cpp" detail={snapshot.runtime.installed.length ? snapshot.runtime.installed.map(backendName).join(', ') : snapshot.runtime.previous.length ? `Pinned update available from ${snapshot.runtime.previous.join(', ')}` : 'Runtime not installed'}><span className="value-pill">{snapshot.runtime.release}</span></SettingsRow>
       <SettingsRow label="Server status" detail={snapshot.server.detail ?? undefined}><span className={`value-pill ${snapshot.server.phase === 'ready' ? 'good' : ''}`}>{snapshot.server.phase === 'ready' ? `Ready · ${backendName(snapshot.server.backend)}` : snapshot.server.phase === 'idle' ? 'Stopped' : snapshot.server.phase === 'error' ? 'Needs attention' : 'Loading model'}</span></SettingsRow>
       <SettingsRow label="Detected hardware" detail={snapshot.hardware.gpu ?? snapshot.hardware.cpu}><span className="value-pill">{snapshot.hardware.memory ? bytes(snapshot.hardware.memory) : 'Memory unavailable'}</span></SettingsRow>
@@ -130,6 +164,7 @@ export function SettingsPage({ snapshot, save, chooseStorage, exportHistory, era
       {logs && <div className="logs"><pre>{logs.map(line => line.replace(/^\[(\d+)\]/, (_, time: string) => new Date(Number(time) * 1000).toLocaleTimeString())).join('\n') || 'No events in this session.'}</pre>
         <button type="button" className="button ghost" onClick={() => void loadLogs()}>Refresh</button></div>}
     </section>
+    <section className="settings-group"><h2>About</h2><About slots={snapshot.squadronSlots} /></section>
     <section className="settings-group">
       <h2><Database size={19} /> Local data</h2>
       <SettingsRow label="Application data folder" detail={snapshot.dataDirectory}><ShieldCheck size={18} className="muted" /></SettingsRow>
@@ -142,6 +177,50 @@ export function SettingsPage({ snapshot, save, chooseStorage, exportHistory, era
       </div>
     </section>
   </div>
+}
+
+function SquadronSettings({ snapshot, busy, save }: {
+  snapshot: Snapshot
+  busy: boolean
+  save: Props['saveSquadron']
+}) {
+  const [enabled, setEnabled] = useState(snapshot.settings.squadronEnabled)
+  const [preferWorkers, setPreferWorkers] = useState(snapshot.settings.squadronPreferWorkers)
+  const [limit, setLimit] = useState(String(snapshot.settings.squadronMaxSlots))
+  const [saving, setSaving] = useState(false)
+  const dirty = enabled !== snapshot.settings.squadronEnabled || Number(limit) !== snapshot.settings.squadronMaxSlots
+    || preferWorkers !== snapshot.settings.squadronPreferWorkers
+  const ready = snapshot.server.phase === 'ready'
+  const slots = snapshot.squadronSlots
+  return <form className="settings-group" onSubmit={async event => {
+    event.preventDefault()
+    setSaving(true)
+    try { await save({ ...snapshot.settings, squadronEnabled: enabled, squadronMaxSlots: Number(limit), squadronPreferWorkers: preferWorkers }) }
+    finally { setSaving(false) }
+  }}>
+    <h2><Users size={19} /> Parallax Squadron</h2>
+    <SettingsRow label="Enable Squadron" detail="Lets the model request permission to delegate independent tasks.">
+      <input type="checkbox" className="switch" aria-label="Enable Squadron" checked={enabled} disabled={saving || busy} onChange={event => setEnabled(event.target.checked)} />
+    </SettingsRow>
+    <SettingsRow label="Maximum parallel workers" detail="llama.cpp checks how many slots fit on the selected backend when the model loads.">
+      <Choice label="Maximum parallel workers" value={limit} disabled={!enabled || saving || busy}
+        options={Array.from({ length: 7 }, (_, index) => {
+          const value = String(index + 2)
+          return { value, label: value === '8' ? 'Auto (up to 8)' : value }
+        })} onChange={setLimit} />
+    </SettingsRow>
+    <SettingsRow label="Prioritize parallel workers" detail="Can use a smaller chat context with Recommended or Max to make room for more workers. Custom keeps its entered context.">
+      <input type="checkbox" className="switch" aria-label="Prioritize parallel workers" checked={preferWorkers} disabled={!enabled || saving || busy} onChange={event => setPreferWorkers(event.target.checked)} />
+    </SettingsRow>
+    <SettingsRow label="Current capacity" detail={ready && slots < 2 && snapshot.settings.squadronEnabled
+      ? 'The loaded model has one slot. A smaller context or model quantization may leave room for workers.'
+      : undefined}>
+      <span className="value-pill">{!snapshot.settings.squadronEnabled ? 'Disabled' : ready ? `${slots} ${slots === 1 ? 'slot' : 'slots'} · ${snapshot.activeContext?.toLocaleString() ?? '—'} tokens` : 'Load a model'}</span>
+    </SettingsRow>
+    <div className="settings-actions"><button className="button primary" disabled={busy || saving || (!dirty && !ready)}>
+      {saving ? 'Saving…' : ready ? dirty ? 'Save and reload model' : 'Reload and check capacity' : 'Save Squadron settings'}
+    </button></div>
+  </form>
 }
 
 function ContextSettings({ snapshot, busy, save, measure }: {

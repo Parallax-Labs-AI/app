@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     path::{Component, Path, PathBuf},
     sync::Mutex,
 };
@@ -28,6 +28,7 @@ pub enum Decision {
     Deny,
     Once,
     Kind,
+    Session,
 }
 
 #[derive(Clone, Serialize)]
@@ -39,6 +40,8 @@ pub struct Approval {
     content: Option<String>,
     remember: bool,
     command: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    session: bool,
 }
 
 #[cfg(test)]
@@ -54,6 +57,7 @@ enum Kind {
     Read,
     Write,
     Create,
+    CreateFolder,
     Move,
     Delete,
     Terminal,
@@ -70,6 +74,7 @@ impl Kind {
             Self::Read => "Read text file",
             Self::Write => "Create or replace text file",
             Self::Create => "Create text file",
+            Self::CreateFolder => "Create project folder",
             Self::Move => "Move or rename file",
             Self::Delete => "Delete file",
             Self::Terminal => "Run workspace command",
@@ -83,6 +88,7 @@ struct Operation {
     content: Option<String>,
     command: Option<String>,
     destination: Option<PathBuf>,
+    lines: Option<(u64, u64)>,
 }
 
 fn project_path(path: &str, allow_root: bool) -> Result<PathBuf> {
@@ -107,9 +113,10 @@ impl Operation {
     fn parse(name: &str, arguments: &str) -> Result<Self> {
         let kind = match name {
             "list_files" => Kind::List,
-            "read_file" => Kind::Read,
+            "read_file" | "read_lines" => Kind::Read,
             "write_file" => Kind::Write,
             "create_file" => Kind::Create,
+            "create_folder" => Kind::CreateFolder,
             "move_file" => Kind::Move,
             "delete_file" => Kind::Delete,
             "workspace_command" => Kind::Terminal,
@@ -156,13 +163,24 @@ impl Operation {
         } else {
             None
         };
+        let lines = if name == "read_lines" {
+            let first = args["start"]
+                .as_u64()
+                .context("Enter a positive start line.")?;
+            let last = args["end"].as_u64().context("Enter a positive end line.")?;
+            ensure!(
+                first > 0 && first <= last && last - first < 200,
+                "Select up to 200 lines, starting at line 1 or later."
+            );
+            Some((first, last))
+        } else {
+            None
+        };
+        let fields = 1
+            + usize::from(content.is_some() || command.is_some() || destination.is_some())
+            + 2 * usize::from(lines.is_some());
         ensure!(
-            args.as_object().is_some_and(|args| args.len()
-                == if content.is_some() || command.is_some() || destination.is_some() {
-                    2
-                } else {
-                    1
-                }),
+            args.as_object().is_some_and(|args| args.len() == fields),
             "Unexpected tool arguments."
         );
         Ok(Self {
@@ -171,6 +189,7 @@ impl Operation {
             content,
             command,
             destination,
+            lines,
         })
     }
 
@@ -202,7 +221,7 @@ impl Operation {
             Ok(resolved) => resolved,
             Err(error)
                 if error.kind() == std::io::ErrorKind::NotFound
-                    && matches!(self.kind, Kind::Write | Kind::Create) =>
+                    && matches!(self.kind, Kind::Write | Kind::Create | Kind::CreateFolder) =>
             {
                 dir.canonicalize(
                     path.parent()
@@ -250,15 +269,21 @@ impl Operation {
                     dir.symlink_metadata(path)?.is_file(),
                     "Select a regular text file."
                 );
+                let file = dir.open(path)?;
+                if let Some((first, last)) = self.lines {
+                    return read_lines(file, first, last);
+                }
                 let mut bytes = Vec::new();
-                dir.open(path)?
-                    .take((FILE_LIMIT + 1) as u64)
-                    .read_to_end(&mut bytes)?;
+                file.take((FILE_LIMIT + 1) as u64).read_to_end(&mut bytes)?;
                 ensure!(
                     bytes.len() <= FILE_LIMIT,
                     "File exceeds the workspace tool limit."
                 );
                 Ok(String::from_utf8(bytes).context("Select a UTF-8 text file.")?)
+            }
+            Kind::CreateFolder => {
+                dir.create_dir(path)?;
+                Ok(format!("Created folder {}", path.display()))
             }
             Kind::Write | Kind::Create => {
                 if let Ok(metadata) = dir.symlink_metadata(path) {
@@ -326,6 +351,38 @@ impl Operation {
     }
 }
 
+fn read_lines(file: impl Read, first: u64, last: u64) -> Result<String> {
+    let mut reader = BufReader::new(file).take(4 * 1024 * 1024);
+    let mut line = Vec::new();
+    let mut output = String::new();
+    for number in 1..=last {
+        line.clear();
+        let bytes = reader.read_until(b'\n', &mut line)?;
+        ensure!(
+            reader.limit() != 0,
+            "The requested lines exceed the file scan limit."
+        );
+        if bytes == 0 {
+            ensure!(
+                !output.is_empty(),
+                "The starting line is beyond the end of the file."
+            );
+            break;
+        }
+        if number >= first {
+            let text = std::str::from_utf8(&line).context("Select a UTF-8 text file.")?;
+            let prefix = format!("{number}: ");
+            ensure!(
+                output.len() + prefix.len() + text.len() <= FILE_LIMIT,
+                "Select a smaller line range."
+            );
+            output.push_str(&prefix);
+            output.push_str(text);
+        }
+    }
+    Ok(output)
+}
+
 pub fn open_project(project: &Project) -> Result<(PathBuf, Dir)> {
     ensure!(
         project.path.is_absolute()
@@ -357,6 +414,8 @@ pub fn tools() -> Value {
             "Create or replace one project text file. Supply its complete new contents.",
             true
         ),
+        {"type":"function","function":{"name":"read_lines","description":"Read up to 200 numbered lines of a UTF-8 project file. Use an inclusive 1-based line range. Useful when a file is too large to read in full.","parameters":{"type":"object","properties":{"path":{"type":"string"},"start":{"type":"integer","minimum":1},"end":{"type":"integer","minimum":1}},"required":["path","start","end"],"additionalProperties":false}}},
+        tool("create_folder", "Create one new folder in the project. Its parent folder must already exist.", false),
         tool("create_file", "Create a new project text file without replacing an existing file.", true),
         {"type":"function","function":{"name":"move_file","description":"Move or rename a regular project file to a new path. The destination must not exist.","parameters":{"type":"object","properties":{"path":{"type":"string"},"destination":{"type":"string"}},"required":["path","destination"],"additionalProperties":false}}},
         tool(
@@ -381,6 +440,7 @@ fn tool(name: &str, description: &str, write: bool) -> Value {
 #[derive(Default)]
 pub struct Access {
     pending: Mutex<HashMap<String, oneshot::Sender<Decision>>>,
+    squadron_session: std::sync::atomic::AtomicBool,
     remembered: Mutex<HashSet<(String, PathBuf, Kind, Option<String>)>>,
 }
 
@@ -399,6 +459,8 @@ impl Access {
 
     pub fn reset(&self) {
         self.remembered.lock().unwrap().clear();
+        self.squadron_session
+            .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     async fn request(
@@ -428,6 +490,44 @@ impl Access {
         decision
     }
 
+    pub async fn approve_squadron(
+        &self,
+        tasks: &[String],
+        slots: u32,
+        cancel: &CancellationToken,
+        emit: &impl Fn(crate::inference::ChatEvent) -> Result<()>,
+    ) -> Result<()> {
+        use std::sync::atomic::Ordering::Relaxed;
+        if self.squadron_session.load(Relaxed) {
+            return Ok(());
+        }
+        let decision = self
+            .request(
+                Approval {
+                    id: String::new(),
+                    action: "Run Parallax Squadron",
+                    project: "Parallax Squadron".into(),
+                    path: format!("{} assignments · up to {slots} in parallel", tasks.len()),
+                    command: None,
+                    content: Some(tasks.join("\n\n")),
+                    remember: false,
+                    session: true,
+                },
+                cancel,
+                emit,
+            )
+            .await;
+        ensure!(!cancel.is_cancelled(), "Squadron was cancelled.");
+        match decision {
+            Decision::Once => Ok(()),
+            Decision::Session => {
+                self.squadron_session.store(true, Relaxed);
+                Ok(())
+            }
+            _ => anyhow::bail!("The user denied Squadron delegation."),
+        }
+    }
+
     pub async fn approve_external(
         &self,
         action: &'static str,
@@ -446,6 +546,7 @@ impl Access {
             command,
             content: detail,
             remember: false,
+            session: false,
         };
         ensure!(
             matches!(self.request(request, cancel, emit).await, Decision::Once)
@@ -482,6 +583,9 @@ impl Access {
             if let Some(destination) = &operation.destination {
                 path.push_str(&format!(" → {}", root.join(destination).display()));
             }
+            if let Some((first, last)) = operation.lines {
+                path.push_str(&format!(" (lines {first}–{last})"));
+            }
             let approval = Approval {
                 id: String::new(),
                 project: project.name.clone(),
@@ -489,6 +593,7 @@ impl Access {
                 path,
                 content: operation.content.clone(),
                 remember: operation.kind.remember(),
+                session: false,
                 command: operation.command.clone(),
             };
             match self.request(approval, cancel, emit).await {
@@ -515,6 +620,75 @@ impl Access {
 mod tests {
     use super::*;
     use crate::inference::{ChatEvent, ToolCall};
+
+    #[test]
+    fn creates_folders_and_reads_numbered_lines_without_replacing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let (root, dir) = open_project(&Project {
+            name: "Fixture".into(),
+            path: temp.path().into(),
+        })
+        .unwrap();
+        let create = r#"{"path":"docs"}"#;
+        Operation::parse("create_folder", create)
+            .unwrap()
+            .execute(dir.try_clone().unwrap(), &root)
+            .unwrap();
+        assert!(Operation::parse("create_folder", create)
+            .unwrap()
+            .execute(dir.try_clone().unwrap(), &root)
+            .is_err());
+        dir.write("docs/notes.txt", b"First\nSecond\nThird")
+            .unwrap();
+        let read = r#"{"path":"docs/notes.txt","start":2,"end":3}"#;
+        let result = Operation::parse("read_lines", read)
+            .unwrap()
+            .execute(dir, &root)
+            .unwrap();
+        assert_eq!(result, "2: Second\n3: Third");
+        assert!(Operation::parse(
+            "read_lines",
+            r#"{"path":"docs/notes.txt","start":3,"end":2}"#
+        )
+        .is_err());
+        assert!(Operation::parse("create_folder", r#"{"path":"../outside"}"#).is_err());
+    }
+
+    #[tokio::test]
+    async fn squadron_session_permission_can_be_cleared() {
+        let access = Access::default();
+        let cancel = CancellationToken::new();
+        let tasks = ["Draft".into(), "Review".into()];
+        let allow = |decision| {
+            let access = &access;
+            move |event| {
+                let ChatEvent::AgentApproval { request } = event else {
+                    panic!("Missing approval.");
+                };
+                assert!(request.session);
+                access.decide(&request.id, decision)
+            }
+        };
+        access
+            .approve_squadron(&tasks, 2, &cancel, &allow(Decision::Once))
+            .await
+            .unwrap();
+        access
+            .approve_squadron(&tasks, 2, &cancel, &allow(Decision::Session))
+            .await
+            .unwrap();
+        access
+            .approve_squadron(&tasks, 2, &cancel, &|_| {
+                panic!("Session approval should be remembered.")
+            })
+            .await
+            .unwrap();
+        access.reset();
+        assert!(access
+            .approve_squadron(&tasks, 2, &cancel, &allow(Decision::Deny))
+            .await
+            .is_err());
+    }
 
     #[tokio::test]
     async fn create_can_be_auto_approved_but_move_asks_and_never_overwrites() {

@@ -6,12 +6,16 @@ export interface Settings {
   customMcp: LocalProgram[]
   agentCommands: LocalProgram[]
   agentAutoRead: boolean
+  squadronEnabled: boolean
+  squadronPreferWorkers: boolean
+  squadronMaxSlots: number
   agentAutoCreate: boolean
   defaultSystemPrompt: string
   theme: 'dark' | 'light' | 'system'
   reducedMotion: boolean
   chatTextSize: 'small' | 'medium' | 'large'
-  accent: 'blue' | 'violet' | 'teal'
+  accent: 'blue' | 'violet' | 'teal' | 'custom'
+  customAccent: string
   defaultModel: string | null
   autoload: boolean
   modelDirectory: string | null
@@ -78,6 +82,7 @@ export interface Snapshot {
   modelPreferences: Record<string, ModelPreferences>
   defaultModelPreferences: ModelPreferences
   activeContext: number | null
+  squadronSlots: number
   dataDirectory: string
   modelDirectory: string
   importing: Progress | null
@@ -113,15 +118,21 @@ export interface MemoryProfile {
   custom: Measurement | null
 }
 export interface Conversation { id: string; title: string; systemPrompt: string; updated: number }
-export interface Message { id: number; role: 'user' | 'assistant'; content: string; reasoning: string; search_failed: boolean }
+export interface SquadronWorker {
+  assignment: string
+  query: string | null
+  outcome: { status: 'complete' | 'failed' | 'stopped'; report: string } | null
+}
+export interface Message { id: number; role: 'user' | 'assistant'; content: string; reasoning: string; search_failed: boolean; squadron?: SquadronWorker[][] }
+export interface ProjectConversation { project: Project; conversation: Conversation }
 export interface Project { name: string; path: string }
 export type ChatMode = 'chat' | 'agent'
-export type AgentDecision = 'deny' | 'once' | 'kind'
-export interface AgentApproval { id: string; project: string; action: string; path: string; content: string | null; remember: boolean; command: string | null }
+export type AgentDecision = 'deny' | 'once' | 'kind' | 'session'
+export interface AgentApproval { id: string; project: string; action: string; path: string; content: string | null; remember: boolean; session?: boolean; command: string | null }
 export interface Thread { conversation: Conversation; messages: Message[]; project: Project | null }
 export type Turn = { type: 'send'; content: string } | { type: 'edit'; message: number; content: string } | { type: 'regenerate' }
 export type SearchStatus = 'searching' | 'done' | 'failed'
-export type ChatEvent = { type: 'started'; message: number } | { type: 'delta' | 'reasoning'; text: string } | { type: 'search_status'; status: SearchStatus } | { type: 'tool_notice'; text: string } | { type: 'agent_approval'; request: AgentApproval }
+export type ChatEvent = { type: 'started'; message: number } | { type: 'delta' | 'reasoning'; text: string } | { type: 'search_status'; status: SearchStatus } | { type: 'tool_notice'; text: string } | { type: 'squadron_activity'; index: number; workers: SquadronWorker[] } | { type: 'agent_approval'; request: AgentApproval }
 export type Page = 'chat' | 'settings' | 'setup'
 export type Action = (name: string, args?: Record<string, unknown>) => Promise<boolean>
 

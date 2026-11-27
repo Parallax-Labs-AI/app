@@ -2934,7 +2934,7 @@ dependencies = [
 
 [[package]]
 name = "parallax-app"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "ash",
@@ -2943,8 +2943,10 @@ dependencies = [
  "flate2",
  "fs2",
  "futures-util",
+ "quick-xml 0.42.0",
  "reqwest 0.12.28",
  "rusqlite",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3304,6 +3306,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]

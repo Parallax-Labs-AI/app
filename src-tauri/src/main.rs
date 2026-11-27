@@ -13,13 +13,17 @@ mod runtime;
 mod search;
 mod server;
 mod settings;
+mod squadron;
 mod transfer;
+mod updates;
 
 use app::{App, Snapshot};
 use db::{Conversation, Installed, Thread, Turn};
 use inference::ChatEvent;
 use settings::{ModelPreferences, Settings};
 use std::{path::PathBuf, sync::Arc};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 use tauri::{ipc::Channel, Manager, State};
 
 type AppState<'a> = State<'a, Arc<App>>;
@@ -42,6 +46,76 @@ fn open_chat_link(app: tauri::AppHandle, url: String) -> Api<()> {
     app.opener()
         .open_url(parsed.as_str(), None::<&str>)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn app_versions() -> serde_json::Value {
+    serde_json::json!({"app":env!("CARGO_PKG_VERSION"),"squadron":squadron::VERSION})
+}
+
+#[tauri::command]
+async fn check_app_update(state: AppState<'_>) -> Api<updates::Check> {
+    api(updates::check(&state.shutdown_token()).await)
+}
+
+#[tauri::command]
+async fn download_app_update(
+    state: AppState<'_>,
+    tag: String,
+    destination: PathBuf,
+    progress: Channel<transfer::Progress>,
+) -> Api<()> {
+    api(
+        updates::download(&tag, &destination, &state.shutdown_token(), |value| {
+            let _ = progress.send(value);
+        })
+        .await,
+    )
+}
+
+#[tauri::command]
+async fn test_web_search(state: AppState<'_>) -> Api<()> {
+    state
+        .test_search()
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+#[cfg(target_os = "macos")]
+fn mac_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{MenuBuilder, SubmenuBuilder};
+    MenuBuilder::new(app)
+        .item(
+            &SubmenuBuilder::new(app, "Parallax App")
+                .text("about-parallax", "About Parallax App")
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?,
+        )
+        .item(
+            &SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?,
+        )
+        .item(
+            &SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .close_window()
+                .build()?,
+        )
+        .build()
 }
 
 #[tauri::command]
@@ -142,6 +216,28 @@ fn list_chats(state: AppState<'_>, search: String) -> Api<Vec<Conversation>> {
 }
 
 #[tauri::command]
+fn list_project_chats(state: AppState<'_>) -> Api<Vec<db::ProjectConversation>> {
+    api(state.db.project_conversations())
+}
+
+#[tauri::command]
+async fn open_project_chat(state: AppState<'_>, mut project: agent::Project) -> Api<Thread> {
+    let app = state.inner().clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let _guard = app
+            .gate
+            .try_lock()
+            .map_err(|_| anyhow::anyhow!("Wait for the current operation to finish."))?;
+        let (path, _) = agent::open_project(&project)?;
+        project.path = path;
+        app.db.open_project_conversation(&project)
+    })
+    .await
+    .map_err(|error| error.to_string())?;
+    api(result)
+}
+
+#[tauri::command]
 fn get_thread(state: AppState<'_>, id: String) -> Api<Thread> {
     api(state.db.thread(&id))
 }
@@ -219,7 +315,14 @@ fn main() {
         std::process::exit(server::supervise(args));
     }
 
-    let application = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(mac_menu).on_menu_event(|app, event| {
+        if event.id() == "about-parallax" {
+            let _ = app.emit("show-about", ());
+        }
+    });
+    let application = builder
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -252,6 +355,10 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open_chat_link,
+            app_versions,
+            check_app_update,
+            download_app_update,
+            test_web_search,
             snapshot,
             model_catalog,
             save_settings,
@@ -268,6 +375,8 @@ fn main() {
             set_thinking,
             create_chat,
             list_chats,
+            list_project_chats,
+            open_project_chat,
             get_thread,
             update_chat,
             delete_chat,

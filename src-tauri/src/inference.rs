@@ -10,12 +10,28 @@ use tokio_util::sync::CancellationToken;
 #[derive(Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChatEvent {
-    Started { message: i64 },
-    Delta { text: String },
-    Reasoning { text: String },
-    SearchStatus { status: SearchStatus },
-    ToolNotice { text: String },
-    AgentApproval { request: crate::agent::Approval },
+    Started {
+        message: i64,
+    },
+    Delta {
+        text: String,
+    },
+    Reasoning {
+        text: String,
+    },
+    SearchStatus {
+        status: SearchStatus,
+    },
+    ToolNotice {
+        text: String,
+    },
+    SquadronActivity {
+        index: usize,
+        workers: crate::squadron::Run,
+    },
+    AgentApproval {
+        request: crate::agent::Approval,
+    },
 }
 
 #[derive(Clone, Serialize)]
@@ -312,7 +328,12 @@ impl TextToolCall {
             }
             return serde_json::json!({"query":query.trim_matches('"').trim()});
         }
-        if name == "move_file" || name == "run_configured_command" || name.starts_with("mcp_") {
+        if name == "move_file"
+            || name == "read_lines"
+            || name == "run_configured_command"
+            || name == crate::squadron::TOOL
+            || name.starts_with("mcp_")
+        {
             let mut args = serde_json::Map::new();
             let mut rest = text;
             while !rest.trim().is_empty() {
@@ -327,7 +348,10 @@ impl TextToolCall {
                     return Value::Null;
                 };
                 let value = value.trim();
-                let value = if name.starts_with("mcp_") {
+                let value = if name.starts_with("mcp_")
+                    || name == crate::squadron::TOOL
+                    || name == "read_lines" && matches!(key, "start" | "end")
+                {
                     serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.into()))
                 } else {
                     Value::String(value.into())

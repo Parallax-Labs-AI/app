@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { ArrowRight, ArrowUp, ArrowUpRight, BookOpen, Brain, ChevronRight, Code2, FileText, Globe, LoaderCircle, Pencil, RotateCcw, Square, TriangleAlert } from 'lucide-react'
+import { ArrowRight, ArrowUp, ArrowUpRight, BookOpen, Brain, ChevronRight, GitFork, Code2, FileText, Globe, LoaderCircle, Pencil, RotateCcw, Square, TriangleAlert } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import Markdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
@@ -11,13 +11,19 @@ import { ContextWheel } from './WorkspaceTools'
 import { Choice } from './Choice'
 import { greetingFor } from './greeting'
 import { splitSearchSources } from './searchSources'
-import type { ChatMode, Message, Project, SearchStatus, Snapshot, Thread, Turn } from './types'
+import type { ChatMode, Message, Project, SearchStatus, SquadronWorker, Snapshot, Thread, Turn } from './types'
 import { Brand, CopyButton, ErrorBanner, IconButton, ProgressView } from './ui'
 
 const examples = [
   { icon: FileText, title: 'Draft an email', prompt: 'Help me draft a short, friendly email to follow up after a meeting.' },
   { icon: Code2, title: 'Explain some code', prompt: 'Explain how a hash map works with a short TypeScript example.' },
   { icon: BookOpen, title: 'Learn something', prompt: 'Explain why the moon has phases in simple terms.' },
+]
+
+const projectExamples = [
+  { icon: FileText, title: 'Explore project', prompt: 'Inspect the project structure and explain what it does.' },
+  { icon: Code2, title: 'Plan a change', prompt: 'Review the project and suggest a small improvement. Outline the files you would change.' },
+  { icon: BookOpen, title: 'Review docs', prompt: 'Review the project documentation and suggest what could be clearer.' },
 ]
 
 export interface Reply {
@@ -27,6 +33,7 @@ export interface Reply {
   text: string
   reasoning: string
   searchStatus: SearchStatus | null
+  squadron: SquadronWorker[][]
 }
 
 function codeText(node: ReactNode): string {
@@ -82,6 +89,35 @@ function SourceList({ sources }: { sources: ReturnType<typeof splitSearchSources
   </details>
 }
 
+function SquadronActivity({ workers, live }: { workers: SquadronWorker[]; live?: boolean }) {
+  const finished = workers.filter(worker => worker.outcome).length
+  const pending = live && finished < workers.length
+  return <details className="squadron-activity">
+    <summary>
+      <GitFork size={15} aria-hidden="true" />
+      <span>Parallax Squadron</span>
+      <span className="squadron-progress" role="status">
+        {pending && <LoaderCircle size={13} className="spin" aria-hidden="true" />}
+        {live ? `${finished}/${workers.length} finished` : `${workers.length} ${workers.length === 1 ? 'worker' : 'workers'}`}
+      </span>
+      <ChevronRight size={14} className="sources-chevron" aria-hidden="true" />
+    </summary>
+    <ol>
+      {workers.map(({ assignment, query, outcome }, index) => {
+        const status = outcome?.status === 'complete' ? 'Complete'
+          : outcome?.status === 'failed' ? 'Failed'
+          : outcome?.status === 'stopped' || !live ? 'Stopped' : 'Pending'
+        return <li key={index}>
+          <div className="squadron-worker-header"><strong>Worker {index + 1}</strong><span data-status={status}>{status}</span></div>
+          <p>{assignment}</p>
+          {query && <p className="squadron-query"><Globe size={13} aria-hidden="true" />{query}</p>}
+          {outcome && <p className="squadron-report">{outcome.report}</p>}
+        </li>
+      })}
+    </ol>
+  </details>
+}
+
 function MessageBubble({ message, live, searchStatus, edit, regenerate }: {
   message: Message; live?: boolean; searchStatus?: SearchStatus | null; edit?: () => void; regenerate?: () => void
 }) {
@@ -98,6 +134,7 @@ function MessageBubble({ message, live, searchStatus, edit, regenerate }: {
       {!user && <span className="message-author">Parallax</span>}
       {searchStatus === 'searching' ? <div className="turn-search" role="status"><LoaderCircle size={15} className="spin" aria-hidden="true" /> Searching the web...</div>
         : (searchStatus === 'failed' || message.search_failed) && <div className="turn-search search-failed" role="status"><TriangleAlert size={15} aria-hidden="true" /> Failed to search</div>}
+      {message.squadron?.map((workers, index) => <SquadronActivity key={index} workers={workers} live={live} />)}
       {user ? <div className="user-content"><MessageMarkdown content={content} /></div> : <>
         {reasoning && <details className="reasoning-block">
           <summary><ChevronRight size={16} /> {live && !content.trim() ? 'Thinking…' : 'Reasoning'}</summary>
@@ -107,7 +144,7 @@ function MessageBubble({ message, live, searchStatus, edit, regenerate }: {
           <span role="status" className="working"><LoaderCircle size={17} className="spin" /> Generating reply…</span> : null}
         {sources.length > 0 && <SourceList sources={sources} />}
       </>}
-      {!live && (content || reasoning) && <div className="message-actions">
+      {!live && (content || reasoning || message.squadron?.length) && <div className="message-actions">
         {content && <CopyButton text={content} />}
         {edit && <IconButton title="Edit message" onClick={edit}><Pencil size={15} /></IconButton>}
         {regenerate && <IconButton title="Regenerate reply" onClick={regenerate}><RotateCcw size={15} /></IconButton>}
@@ -162,7 +199,7 @@ export function Chat({ mode, project, projectControl, mcpControl, usedContext, s
       const lastUser = messages.findLastIndex(message => message.role === 'user')
       visible = messages.slice(0, lastUser + 1)
     }
-    visible = [...visible, { id: activeReply.message ?? -2, role: 'assistant', content: activeReply.text, reasoning: activeReply.reasoning, search_failed: activeReply.searchStatus === 'failed' }]
+    visible = [...visible, { id: activeReply.message ?? -2, role: 'assistant', content: activeReply.text, reasoning: activeReply.reasoning, search_failed: activeReply.searchStatus === 'failed', squadron: activeReply.squadron }]
   }
   const latest = visible.at(-1)
 
@@ -174,7 +211,7 @@ export function Chat({ mode, project, projectControl, mcpControl, usedContext, s
   }, [threadId])
   useEffect(() => {
     if (sticky.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight
-  }, [latest?.id, latest?.content, latest?.reasoning])
+  }, [latest?.id, latest?.content, latest?.reasoning, latest?.squadron])
   useEffect(() => {
     const field = textarea.current
     if (field) {
@@ -229,9 +266,12 @@ export function Chat({ mode, project, projectControl, mcpControl, usedContext, s
       sticky.current = el.scrollHeight - el.clientHeight - el.scrollTop < 90
     }}>
       {visible.length === 0 ? <div className="chat-empty">
-        <h1>{greeting}</h1>
-        <p>{ready ? 'Start a conversation with your local model.' : 'Select a model below to start chatting.'}</p>
-        {ready ? <div className="example-grid">{examples.map(({ icon: Icon, title, prompt }) => <button key={title} className="example" onClick={() => {
+        <h1>{mode === 'agent' ? project?.name ?? 'Choose a project' : greeting}</h1>
+        {mode === 'agent' ? <p>{project
+          ? 'Ask Agent to explore your project or help make a change.'
+          : 'Select a folder to start a conversation for that project.'}</p>
+          : ready && <p>Start a conversation with your local model.</p>}
+        {ready && (mode === 'chat' || project) ? <div className="example-grid">{(mode === 'agent' ? projectExamples : examples).map(({ icon: Icon, title, prompt }) => <button key={title} className="example" onClick={() => {
           setDraft(prompt)
           textarea.current?.focus()
         }}><Icon size={18} /><span>{title}</span><ArrowRight size={15} /></button>)}</div>
@@ -254,15 +294,15 @@ export function Chat({ mode, project, projectControl, mcpControl, usedContext, s
         {editing !== null && <div className="editing-note">Editing this message replaces replies that follow it.<button className="text-link" type="button" onClick={() => { setEditing(null); setDraft('') }}>Cancel edit</button></div>}
         <div className="composer-input">
           <textarea ref={textarea} rows={1} value={draft} maxLength={60000} onChange={event => setDraft(event.target.value)}
-            aria-label="Message" placeholder={mode === 'agent' && !project ? 'Select a project to get started' : ready ? 'Message Parallax…' : loading ? 'Model is loading…' : 'Load a model to send a message'}
+            aria-label="Message" placeholder={mode === 'agent' && !project ? 'Select a project to get started' : ready ? 'Message Parallax…' : loading ? 'Model is loading…' : 'Load a model...'}
             disabled={!canCompose} onKeyDown={event => {
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit() }
             }} />
         </div>
         <div className="composer-controls">
           <div className="composer-toggles">
-          {mode === 'chat' && <button type="button" className="composer-toggle" aria-pressed={snapshot.settings.webSearch} disabled={busy}
-            title="When enabled, the model can send search queries to public providers" onClick={toggleSearch}><Globe size={15} /> Web search</button>}
+          <button type="button" className="composer-toggle" aria-pressed={snapshot.settings.webSearch} disabled={busy}
+            title="When enabled, the model can send search queries to public providers" onClick={toggleSearch}><Globe size={15} /> Web search</button>
           <button type="button" className="composer-toggle" aria-pressed={thinking} disabled={busy || !ready || !activeModel}
             title="Thinking applies to this model’s next reply" onClick={() => toggleThinking(activeModel, !thinking)}><Brain size={15} /> Thinking</button>
           {mcpControl}

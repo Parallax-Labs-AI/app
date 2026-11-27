@@ -1,6 +1,6 @@
 [package]
 name = "parallax-app"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 build = "build.rs"
 
@@ -15,8 +15,10 @@ cap-std = "=4.0.3"
 flate2 = "1"
 fs2 = "0.4"
 futures-util = "0.3"
+quick-xml = { version = "0.42", features = ["serialize"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 rusqlite = { version = "0.38", features = ["bundled"] }
+semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

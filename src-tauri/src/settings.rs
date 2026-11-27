@@ -10,12 +10,16 @@ pub struct Settings {
     pub custom_mcp: Vec<crate::extensions::Program>,
     pub agent_commands: Vec<crate::extensions::Program>,
     pub agent_auto_read: bool,
+    pub squadron_enabled: bool,
+    pub squadron_prefer_workers: bool,
+    pub squadron_max_slots: u32,
     pub agent_auto_create: bool,
     pub default_system_prompt: String,
     pub theme: String,
     pub reduced_motion: bool,
     pub chat_text_size: String,
     pub accent: String,
+    pub custom_accent: String,
     pub default_model: Option<String>,
     pub autoload: bool,
     pub model_directory: Option<PathBuf>,
@@ -38,12 +42,16 @@ impl Default for Settings {
             custom_mcp: Vec::new(),
             agent_commands: Vec::new(),
             agent_auto_read: false,
+            squadron_enabled: true,
+            squadron_prefer_workers: false,
+            squadron_max_slots: 8,
             agent_auto_create: false,
             default_system_prompt: String::new(),
             theme: "dark".into(),
             reduced_motion: false,
             chat_text_size: "medium".into(),
             accent: "blue".into(),
+            custom_accent: "#607CFF".into(),
             default_model: None,
             autoload: false,
             model_directory: None,
@@ -61,6 +69,10 @@ impl Default for Settings {
 
 impl Settings {
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            (2..=8).contains(&self.squadron_max_slots),
+            "Choose between 2 and 8 Squadron workers."
+        );
         crate::extensions::validate(&self.custom_mcp, true)?;
         crate::extensions::validate(&self.agent_commands, false)?;
         ensure!(
@@ -76,8 +88,14 @@ impl Settings {
             "Choose a supported chat text size."
         );
         ensure!(
-            matches!(self.accent.as_str(), "blue" | "violet" | "teal"),
+            matches!(self.accent.as_str(), "blue" | "violet" | "teal" | "custom"),
             "Choose a supported accent color."
+        );
+        ensure!(
+            self.custom_accent.strip_prefix('#').is_some_and(
+                |hex| hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+            ),
+            "Use a six-digit hex accent color."
         );
         ensure!(
             matches!(

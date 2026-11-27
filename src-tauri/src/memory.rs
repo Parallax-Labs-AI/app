@@ -331,6 +331,50 @@ pub async fn profile(
     Ok(result)
 }
 
+pub const WORKER_CONTEXT: u32 = 2048;
+pub const PARALLEL_BATCH_ARGS: [&str; 4] = ["--batch-size", "256", "--ubatch-size", "128"];
+
+/// The orchestrator waits while workers run, so the same pool can hold a
+/// full chat context or the shorter active worker contexts.
+pub fn parallel_context(context: u32, slots: u32) -> u32 {
+    context.max(context.min(WORKER_CONTEXT) * slots)
+}
+
+pub async fn parallel_slots(
+    report: &Profile,
+    profiler: &Path,
+    model: &Installed,
+    gpu_layers: Option<u32>,
+    context: u32,
+    limit: u32,
+    cancel: &CancellationToken,
+) -> u32 {
+    let available = std::thread::available_parallelism()
+        .map_or(1, |count| count.get())
+        .min(limit as usize) as u32;
+    let mut low = 1;
+    let mut high = available + 1;
+    while low + 1 < high && !cancel.is_cancelled() {
+        let slots = (low + high) / 2;
+        let measured = measure(
+            profiler,
+            model,
+            &report.backend,
+            gpu_layers,
+            parallel_context(context, slots),
+            slots,
+            cancel,
+        )
+        .await;
+        if measured.is_ok_and(|measurement| report.fits(&measurement, false)) {
+            low = slots;
+        } else {
+            high = slots;
+        }
+    }
+    low
+}
+
 async fn sample<'a>(
     samples: &'a mut BTreeMap<u32, Measurement>,
     profiler: &Path,
@@ -343,40 +387,57 @@ async fn sample<'a>(
     match samples.entry(tokens) {
         std::collections::btree_map::Entry::Occupied(entry) => Ok(entry.into_mut()),
         std::collections::btree_map::Entry::Vacant(entry) => {
-            let mut command = hardware::runtime_command(profiler);
-            command
-                .current_dir(profiler.parent().context("Missing profiler folder")?)
-                .args([
-                    "--fit-print",
-                    "on",
-                    "--log-jsonl",
-                    "--parallel",
-                    "1",
-                    "--ctx-size",
-                    &tokens.to_string(),
-                ])
-                .args(placement(backend, gpu_layers))
-                .arg("--model")
-                .arg(&model.path)
-                .stdin(Stdio::null())
-                .stderr(Stdio::piped());
-            let query = Command::from(command).kill_on_drop(true).output();
-            let output = tokio::select! {
-                _ = cancel.cancelled() => bail!("Memory check stopped."),
-                result = tokio::time::timeout(Duration::from_secs(30), query) => result.context("llama.cpp's memory check timed out.")??,
-            };
-            ensure!(
-                output.status.success(),
-                "llama.cpp could not measure memory for this model and backend."
-            );
-            let rows = parse(&output.stdout)?;
-            ensure!(
-                backend == "cpu" || rows.iter().any(|row| row.kind == "device" && row.used > 0),
-                "llama.cpp did not report memory for an active accelerator."
-            );
-            Ok(entry.insert(Measurement { tokens, rows }))
+            let measurement =
+                measure(profiler, model, backend, gpu_layers, tokens, 1, cancel).await?;
+            Ok(entry.insert(measurement))
         }
     }
+}
+
+async fn measure(
+    profiler: &Path,
+    model: &Installed,
+    backend: &str,
+    gpu_layers: Option<u32>,
+    tokens: u32,
+    parallel: u32,
+    cancel: &CancellationToken,
+) -> Result<Measurement> {
+    let mut command = hardware::runtime_command(profiler);
+    command
+        .current_dir(profiler.parent().context("Missing profiler folder")?)
+        .args([
+            "--fit-print",
+            "on",
+            "--log-jsonl",
+            "--parallel",
+            &parallel.to_string(),
+            "--ctx-size",
+            &tokens.to_string(),
+        ])
+        .args(placement(backend, gpu_layers))
+        .arg("--model")
+        .arg(&model.path)
+        .stdin(Stdio::null())
+        .stderr(Stdio::piped());
+    if parallel > 1 {
+        command.args(PARALLEL_BATCH_ARGS);
+    }
+    let query = Command::from(command).kill_on_drop(true).output();
+    let output = tokio::select! {
+        _ = cancel.cancelled() => bail!("Memory check stopped."),
+        result = tokio::time::timeout(Duration::from_secs(30), query) => result.context("llama.cpp's memory check timed out.")??,
+    };
+    ensure!(
+        output.status.success(),
+        "llama.cpp could not measure memory for this model and backend."
+    );
+    let rows = parse(&output.stdout)?;
+    ensure!(
+        backend == "cpu" || rows.iter().any(|row| row.kind == "device" && row.used > 0),
+        "llama.cpp did not report memory for an active accelerator."
+    );
+    Ok(Measurement { tokens, rows })
 }
 
 pub fn placement(backend: &str, gpu_layers: Option<u32>) -> Vec<String> {
@@ -415,6 +476,14 @@ fn parse(output: &[u8]) -> Result<Vec<MemoryRow>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parallel_pool_preserves_chat_context_without_multiplying_it() {
+        assert_eq!(parallel_context(32768, 1), 32768);
+        assert_eq!(parallel_context(32768, 8), 32768);
+        assert_eq!(parallel_context(4096, 8), 16384);
+        assert_eq!(parallel_context(1024, 3), 3072);
+    }
 
     #[test]
     fn startup_verified_max_updates_both_presets_on_the_same_backend() {

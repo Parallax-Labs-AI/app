@@ -1,25 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { CircleHelp, Ellipsis, FolderOpen, LoaderCircle, Menu, MessageSquare, Plus, Search, Settings2, Terminal, X } from 'lucide-react'
+import { About } from './About'
+import { AppUpdates, useAppUpdates } from './AppUpdates'
 import { Chat, type Reply } from './Chat'
 import { ModelSettings } from './ModelSettings'
 import { ModelPreferencesForm } from './ModelOptions'
 import { SettingsPage } from './SettingsPage'
 import { McpPicker } from './ToolSettings'
-import { ApprovalDialog, ProjectDialog } from './WorkspaceTools'
+import { ApprovalDialog, ProjectDialog, ProjectList } from './WorkspaceTools'
 import { Setup } from './Setup'
 import { Brand, BrandOrbit, ErrorBanner, IconButton, Modal, ProgressView } from './ui'
-import { errorText, type AgentApproval, type AgentDecision, type ChatMode, type Project, type Action, type CatalogModel, type ChatEvent, type Conversation, type Model, type ModelPreferences, type Page, type Snapshot, type Thread, type Turn } from './types'
+import { errorText, type AgentApproval, type AgentDecision, type ChatMode, type Project, type ProjectConversation, type Action, type CatalogModel, type ChatEvent, type Conversation, type Model, type ModelPreferences, type Page, type Snapshot, type Settings, type Thread, type Turn } from './types'
 
 type Dialog = { type: 'chat'; chat: Conversation } | { type: 'delete_chat'; chat: Conversation } | { type: 'delete_all' } | { type: 'delete_model'; model: Model }
 
 export function App() {
+  const updates = useAppUpdates()
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [catalog, setCatalog] = useState<CatalogModel[]>([])
   const [mode, setMode] = useState<ChatMode>('chat')
+  const [projectChats, setProjectChats] = useState<ProjectConversation[]>([])
   const [project, setProject] = useState<Project | null>(null)
   const [selectingProject, setSelectingProject] = useState(false)
+  const [projectSaving, setProjectSaving] = useState(false)
   const [approval, setApproval] = useState<AgentApproval | null>(null)
   const [usedContext, setUsedContext] = useState<number | null>(null)
   const [page, setPage] = useState<Page>('chat')
@@ -27,6 +33,7 @@ export function App() {
   const [chats, setChats] = useState<Conversation[]>([])
   const [thread, setThread] = useState<Thread | null>(null)
   const [reply, setReply] = useState<Reply | null>(null)
+  const [showAbout, setShowAbout] = useState(false)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [modelOptions, setModelOptions] = useState<Model | null>(null)
   const [savingDialog, setSavingDialog] = useState(false)
@@ -65,20 +72,41 @@ export function App() {
     return list
   }, [])
 
+  const refreshProjects = useCallback(async () => {
+    const list = await invoke<ProjectConversation[]>('list_project_chats')
+    setProjectChats(list)
+    return list
+  }, [])
+
   const openChat = useCallback(async (id: string) => {
+    if (generation.current) { setPage('chat'); setDrawer(false); return }
     selected.current = id
     setThread(current => current?.conversation.id === id ? current : null)
     setPage('chat')
     setDrawer(false)
     setSidebarMenu(false)
-    if (generation.current) return
-    const next = await invoke<Thread>('get_thread', { id })
+    setUsedContext(null)
+    let next: Thread
+    try { next = await invoke<Thread>('get_thread', { id }) }
+    catch (failure) {
+      if (selected.current === id) {
+        selected.current = null
+        setThread(null)
+        setProject(null)
+        localStorage.removeItem('parallax.activeChat')
+        for (const key of ['parallax.activeProject', 'parallax.activeConversation']) {
+          if (localStorage.getItem(key) === id) localStorage.removeItem(key)
+        }
+      }
+      throw failure
+    }
     if (selected.current === id) {
       setThread(next)
       setProject(next.project)
       setMode(next.project ? 'agent' : 'chat')
       setUsedContext(null)
       localStorage.setItem('parallax.activeChat', id)
+      localStorage.setItem(next.project ? 'parallax.activeProject' : 'parallax.activeConversation', id)
     }
   }, [])
 
@@ -90,18 +118,24 @@ export function App() {
     setStarting(true)
     setError('')
     try {
-      const [state, models, list] = await Promise.all([refresh(), invoke<CatalogModel[]>('model_catalog'), refreshChats()])
+      const [state, models, list, projects] = await Promise.all([refresh(), invoke<CatalogModel[]>('model_catalog'), refreshChats(), refreshProjects()])
       setCatalog(models)
       if (state.settings.onboarded) {
         const previous = localStorage.getItem('parallax.activeChat')
-        const chat = list.find(item => item.id === previous)
+        const chat = [...list, ...projects.map(item => item.conversation)].find(item => item.id === previous)
         if (chat) await openChat(chat.id)
       }
     } catch (failure) { setError(errorText(failure)) }
     finally { setStarting(false) }
-  }, [openChat, refresh, refreshChats])
+  }, [openChat, refresh, refreshChats, refreshProjects])
 
   useEffect(() => { void boot() }, [boot])
+  useEffect(() => {
+    if (!isTauri()) return
+    let active = true
+    const unlisten = listen('show-about', () => { if (active) setShowAbout(true) })
+    return () => { active = false; void unlisten.then(dispose => dispose()).catch(() => undefined) }
+  }, [])
   const connected = snapshot !== null
   useEffect(() => {
     if (!connected) return
@@ -116,18 +150,23 @@ export function App() {
   }, [connected, search, refreshChats])
   useEffect(() => {
     if (!snapshot) return
-    const { theme, reducedMotion, accent, chatTextSize } = snapshot.settings
+    const { theme, reducedMotion, accent, customAccent, chatTextSize } = snapshot.settings
     const system = window.matchMedia('(prefers-color-scheme: light)')
     const update = () => {
       document.documentElement.dataset.theme = theme === 'system' ? system.matches ? 'light' : 'dark' : theme
       document.documentElement.dataset.accent = accent
+      if (accent === 'custom' && /^#[0-9a-f]{6}$/i.test(customAccent)) {
+        document.documentElement.style.setProperty('--picked-accent', customAccent)
+      } else {
+        document.documentElement.style.removeProperty('--picked-accent')
+      }
       document.documentElement.dataset.chatSize = chatTextSize
       document.documentElement.dataset.motion = reducedMotion ? 'reduced' : 'default'
     }
     update()
     system.addEventListener('change', update)
     return () => system.removeEventListener('change', update)
-  }, [snapshot?.settings.theme, snapshot?.settings.reducedMotion, snapshot?.settings.accent, snapshot?.settings.chatTextSize])
+  }, [snapshot?.settings.theme, snapshot?.settings.reducedMotion, snapshot?.settings.accent, snapshot?.settings.customAccent, snapshot?.settings.chatTextSize])
 
   useEffect(() => {
     if (page !== 'chat' || snapshot?.server.phase !== 'ready' || reply) return
@@ -154,6 +193,7 @@ export function App() {
     selected.current = null
     localStorage.removeItem('parallax.activeChat')
     setThread(null)
+    setProject(null)
     setUsedContext(null)
     setPage('chat')
     setDrawer(false)
@@ -163,12 +203,12 @@ export function App() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.defaultPrevented || dialog || modelOptions || selectingProject || approval) return
-      if (event.key.toLowerCase() === 'n') { event.preventDefault(); newChat() }
+      if (event.key.toLowerCase() === 'n') { event.preventDefault(); if (!generation.current) { if (mode === 'agent') setSelectingProject(true); else newChat() } }
       if (event.key.toLowerCase() === 'k') { event.preventDefault(); setDrawer(true); requestAnimationFrame(() => searchRef.current?.focus()) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [newChat, dialog, modelOptions, selectingProject, approval])
+  }, [newChat, mode, dialog, modelOptions, selectingProject, approval])
 
   const action: Action = async (name, args) => {
     setError('')
@@ -193,6 +233,15 @@ export function App() {
     try { return await action('load_model', { id, retryGpu }) }
     finally { setOperating(false) }
   }
+  const saveSquadron = async (settings: Settings) => {
+    const model = snapshot?.server.phase === 'ready' ? snapshot.server.modelId : null
+    setOperating(true)
+    try {
+      if (!await action('save_settings', { settings })) return false
+      return model ? await load(model) : true
+    } finally { setOperating(false) }
+  }
+
   const saveModelOptions = async (id: string, preferences: ModelPreferences, reload: boolean, onSaved?: () => void) => {
     setOperating(true)
     try {
@@ -258,7 +307,7 @@ export function App() {
   }
 
   const compose = async (turn: Turn) => {
-    if (generation.current || (mode === 'agent' && !project)) return
+    if (generation.current || (selected.current && !thread) || (mode === 'agent' && !project)) return
     generation.current = true
     queuedStop.current = false
     setError('')
@@ -271,11 +320,12 @@ export function App() {
         if (selected.current === origin) {
           selected.current = id
           localStorage.setItem('parallax.activeChat', id)
+          localStorage.setItem('parallax.activeConversation', id)
           setThread({ conversation: created, messages: [], project: mode === 'agent' ? project : null })
         }
       }
       const chatId = id
-      setReply({ chatId, turn, message: null, text: '', reasoning: '', searchStatus: null })
+      setReply({ chatId, turn, message: null, text: '', reasoning: '', searchStatus: null, squadron: [] })
       const events = new Channel<ChatEvent>()
       events.onmessage = (event) => {
         if (event.type === 'tool_notice') { setNotice(event.text); return }
@@ -287,6 +337,11 @@ export function App() {
         setReply(current => {
           if (!current || current.chatId !== chatId) return current
           if (event.type === 'started') return { ...current, message: event.message }
+          if (event.type === 'squadron_activity') {
+            const squadron = [...current.squadron]
+            squadron[event.index] = event.workers
+            return { ...current, squadron }
+          }
           if (event.type === 'search_status') return { ...current, searchStatus: event.status }
           if (event.type === 'reasoning') return { ...current, reasoning: current.reasoning + event.text }
           return { ...current, text: current.text + event.text }
@@ -300,7 +355,7 @@ export function App() {
           const saved = await invoke<Thread>('get_thread', { id })
           if (selected.current === id) setThread(saved)
         }
-        await refreshChats()
+        await Promise.all([refreshChats(), refreshProjects()])
         await refresh()
       } catch (failure) { setError(errorText(failure)) }
       setReply(null)
@@ -319,8 +374,24 @@ export function App() {
   const switchMode = (next: ChatMode) => {
     if (generation.current || mode === next) return
     newChat()
+    setSearch('')
     setMode(next)
-    if (next === 'agent') setProject(null)
+    const previous = localStorage.getItem(next === 'agent' ? 'parallax.activeProject' : 'parallax.activeConversation')
+    const id = next === 'agent'
+      ? (projectChats.find(entry => entry.conversation.id === previous) ?? projectChats[0])?.conversation.id
+      : previous
+    if (id) void openChat(id).catch(failure => setError(errorText(failure)))
+  }
+
+  const chooseProject = async (project: Project) => {
+    setProjectSaving(true)
+    try {
+      const next = await invoke<Thread>('open_project_chat', { project })
+      await openChat(next.conversation.id)
+      setSelectingProject(false)
+      await refreshProjects().catch(failure => setError(errorText(failure)))
+    } catch (failure) { throw new Error(errorText(failure)) }
+    finally { setProjectSaving(false) }
   }
 
   const stop = () => {
@@ -335,7 +406,7 @@ export function App() {
       : <p>Open Parallax App from your desktop to access local models and conversations.</p>}
   </div>
 
-  const busy = reply !== null || operating
+  const busy = reply !== null || operating || (selected.current !== null && thread === null)
   const historyButton = (chat: Conversation) => <div key={chat.id} className={`history-item ${page === 'chat' && chat.id === selected.current ? 'selected' : ''}`}>
     <button className="history-open" disabled={busy && chat.id !== selected.current} title={chat.title} onClick={() => void openChat(chat.id).catch(failure => setError(errorText(failure)))}><MessageSquare size={15} /><span>{chat.title}</span></button>
     <IconButton title={`Options for ${chat.title}`} onClick={() => setDialog({ type: 'chat', chat })} disabled={busy}><Ellipsis size={16} /></IconButton>
@@ -347,11 +418,11 @@ export function App() {
   }}>
     {drawer && <button className="drawer-backdrop" aria-label="Close sidebar" onClick={() => setDrawer(false)} />}
     <aside className={`sidebar ${drawer ? 'drawer-open' : ''}`}>
-      <div className="sidebar-brand"><Brand /><div><strong>Parallax</strong><span>PARALLAX LABS</span></div></div>
+      <div className="sidebar-brand"><Brand /><strong>Parallax</strong></div>
       <div className="side-top">
-        <button className="new-chat" disabled={!!reply && page === 'chat'} onClick={newChat}>{reply && page !== 'chat' ? <MessageSquare size={19} /> : <Plus size={19} />} {reply && page !== 'chat' ? 'Back to chat' : 'New chat'} <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'} N</kbd></button>
+        <button className="new-chat" disabled={busy && page === 'chat'} onClick={mode === 'agent' && !reply ? () => setSelectingProject(true) : newChat}>{reply && page !== 'chat' ? <MessageSquare size={19} /> : <Plus size={19} />} {reply && page !== 'chat' ? 'Back to chat' : mode === 'agent' ? 'Add project' : 'New chat'} <kbd>{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'} N</kbd></button>
         <div className="search">
-          <Search size={16} /><input ref={searchRef} aria-label="Search conversations" placeholder="Search chats" value={search} maxLength={120} onChange={event => setSearch(event.target.value)} />
+          <Search size={16} /><input ref={searchRef} aria-label={mode === 'agent' ? 'Search projects' : 'Search conversations'} placeholder={mode === 'agent' ? 'Search projects' : 'Search chats'} value={search} maxLength={120} onChange={event => setSearch(event.target.value)} />
           {search && <IconButton title="Clear search" onClick={() => setSearch('')}><X size={14} /></IconButton>}
         </div>
         <nav aria-label="Main navigation">
@@ -359,11 +430,17 @@ export function App() {
         </nav>
       </div>
       <div className="history">
-        <h2>{search ? 'Search results' : 'Conversations'}</h2>
-        {chats.length ? chats.map(historyButton) : <p>{search ? 'No matching conversations.' : 'Your chats will appear here.'}</p>}
+        {mode === 'agent' ? <>
+          <h2>Projects</h2>
+          <ProjectList entries={projectChats} filter={search} selected={page === 'chat' ? thread?.conversation.id : undefined} busy={busy}
+            open={id => void openChat(id).catch(failure => setError(errorText(failure)))} />
+        </> : <>
+          <h2>{search ? 'Search results' : 'Conversations'}</h2>
+          {chats.length ? chats.map(historyButton) : <p>{search ? 'No matching conversations.' : 'Your chats will appear here.'}</p>}
+        </>}
       </div>
       <div className="sidebar-footer">
-        <button className={`nav-link ${page === 'settings' ? 'active' : ''}`} aria-current={page === 'settings' ? 'page' : undefined} onClick={() => navigate('settings')}><Settings2 size={18} /> Settings</button>
+        <button className={`nav-link ${page === 'settings' ? 'active' : ''}`} aria-current={page === 'settings' ? 'page' : undefined} onClick={() => navigate('settings')}><Settings2 size={18} /> Settings{updates.result?.status === 'available' && <span className="update-badge">Update</span>}</button>
       </div>
     </aside>
 
@@ -393,12 +470,12 @@ export function App() {
         {error && <ErrorBanner text={error} onDismiss={() => setError('')} />}
         {notice && <div className="notice" role="status">{notice}<IconButton title="Dismiss notification" onClick={() => setNotice('')}><X size={15} /></IconButton></div>}
       </div>}
-      {page === 'chat' && <Chat key={mode} mode={mode} project={project} mcpControl={<McpPicker programs={snapshot.settings.customMcp} busy={busy}
+      {page === 'chat' && <Chat key={`${mode}-${mode === 'agent' ? thread?.conversation.id ?? 'none' : 'chat'}`} mode={mode} project={project} mcpControl={<McpPicker programs={snapshot.settings.customMcp} busy={busy}
         onChange={customMcp => action('save_settings', { settings: { ...snapshot.settings, customMcp } })} />} usedContext={usedContext} projectControl={mode === 'agent' ? <div className="project-bar">
-        <button className="button secondary" disabled={busy || !!thread?.messages.length} onClick={() => setSelectingProject(true)}><FolderOpen size={16} /> {project?.name ?? 'Select project'}</button>
-        {project && <span title={project.path}>{project.path}</span>}
+        {project ? <><FolderOpen size={15} aria-hidden="true" /><strong>{project.name}</strong><span title={project.path}>{project.path}</span></>
+          : <button className="button secondary" disabled={busy} onClick={() => setSelectingProject(true)}><FolderOpen size={16} /> Select project</button>}
       </div> : null} snapshot={snapshot} thread={thread} reply={reply} busy={busy} compose={compose} stop={stop} chooseModels={() => navigate('settings')} selectModel={id => void load(id)} toggleSearch={() => void action('save_settings', { settings: { ...snapshot.settings, webSearch: !snapshot.settings.webSearch } })} toggleThinking={(id, enabled) => void action('set_thinking', { id, enabled })} reload={id => void load(id)} />}
-      {page === 'settings' && <div className="page-scroll"><SettingsPage snapshot={snapshot} save={settings => action('save_settings', { settings })} chooseStorage={() => void chooseStorage()} exportHistory={() => void exportHistory()}
+      {page === 'settings' && <div className="page-scroll"><SettingsPage updatePanel={<AppUpdates updates={updates} />} snapshot={snapshot} saveSquadron={saveSquadron} save={settings => action('save_settings', { settings })} chooseStorage={() => void chooseStorage()} exportHistory={() => void exportHistory()}
         clearAgentPermissions={() => void invoke('clear_agent_permissions').then(() => setNotice('Agent approvals cleared.')).catch(failure => setError(errorText(failure)))}
         eraseHistory={() => setDialog({ type: 'delete_all' })} models={<ModelSettings {...library} />} saveContext={saveModelOptions} measureContext={(id, custom) => measureContext(id, custom, true)} conversation={thread?.conversation} saveConversationPrompt={saveConversationPrompt} repair={() => void prepareRuntime(snapshot.runtime.installed.length > 0)}
         retry={() => snapshot.server.modelId && void load(snapshot.server.modelId, true)} busy={busy} /></div>}
@@ -409,7 +486,8 @@ export function App() {
       }} />}
     </main>
 
-    {selectingProject && <ProjectDialog project={project} onSave={next => { setProject(next); setSelectingProject(false) }} onClose={() => setSelectingProject(false)} />}
+    {showAbout && <Modal title="About Parallax App" onClose={() => setShowAbout(false)}><About slots={snapshot.squadronSlots} /></Modal>}
+    {selectingProject && <ProjectDialog project={null} onSave={chooseProject} saving={projectSaving} onClose={() => { if (!projectSaving) setSelectingProject(false) }} />}
     {approval && <ApprovalDialog key={approval.id} request={approval} decide={decision => void decide(decision)} />}
     {modelOptions && <ModelPreferencesForm key={modelOptions.id} model={modelOptions} snapshot={snapshot} busy={busy} onClose={() => setModelOptions(null)}
       onMeasure={custom => measureContext(modelOptions.id, custom, false)}
@@ -420,7 +498,7 @@ export function App() {
         const fields = new FormData(event.currentTarget)
         setSavingDialog(true)
         if (await action('update_chat', { id: dialog.chat.id, title: fields.get('title') ?? dialog.chat.title, systemPrompt: dialog.chat.systemPrompt })) {
-          await refreshChats().catch(failure => setError(errorText(failure)))
+          await Promise.all([refreshChats(), refreshProjects()]).catch(failure => setError(errorText(failure)))
           if (selected.current === dialog.chat.id) await openChat(dialog.chat.id).catch(failure => setError(errorText(failure)))
           setDialog(null)
         }
@@ -440,12 +518,13 @@ export function App() {
               ? await action('delete_model', { id: dialog.model.id })
               : await action('delete_chat', { id: dialog.type === 'delete_chat' ? dialog.chat.id : null })
             if (ok) {
-              if (dialog.type === 'delete_all' || (dialog.type === 'delete_chat' && selected.current === dialog.chat.id)) {
-                selected.current = null
-                localStorage.removeItem('parallax.activeChat')
-                setThread(null)
+              if (dialog.type !== 'delete_model') {
+                for (const key of ['parallax.activeProject', 'parallax.activeConversation']) {
+                  if (dialog.type === 'delete_all' || localStorage.getItem(key) === dialog.chat.id) localStorage.removeItem(key)
+                }
+                if (dialog.type === 'delete_all' || selected.current === dialog.chat.id) newChat()
               }
-              if (dialog.type !== 'delete_model') await refreshChats().catch(failure => setError(errorText(failure)))
+              if (dialog.type !== 'delete_model') await Promise.all([refreshChats(), refreshProjects()]).catch(failure => setError(errorText(failure)))
               setDialog(null)
             }
             setSavingDialog(false)

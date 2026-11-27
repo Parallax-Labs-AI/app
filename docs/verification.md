@@ -73,3 +73,17 @@ The 0.5.2 universal DMG passed integrity, bundle signature, architecture startup
 ## 0.5.2 Agent update
 
 The frontend production build passed. On Apple Silicon, the real Mini model returned generation usage, and the model tokenizer counted the saved conversation. The model completed a live MCP search and requested approval before reading and quoting a project file. The permission tests checked confinement to the selected folder, remembered read approvals, revocation, and one-time approval for writes and deletions. The new universal DMG passed integrity, signature, SHA-256, and startup checks for both slices. Desktop UI automation was unavailable.
+
+## 0.6.0 checks
+
+The frontend production build and 30 standard Rust tests passed on Apple Silicon. The Squadron fixture verified overlapping requests on one inference endpoint, ordered reports, and one-time and session approvals. A live Parallax 2 Mini test profiled two slots and completed two simultaneous requests in one llama.cpp process. The managed uvx search path also passed a live MCP test on macOS.
+
+The universal macOS disk image passed integrity, signature, SHA-256, and startup checks for both slices. The Windows x64 code cross-checked and the release executable linked successfully. The Windows update archive passed integrity and SHA-256 checks. Native Windows startup and Web Search remain unverified.
+
+## 0.6.0 news and accent update
+
+Parallax 2 Mini answered the reported news prompt with a structured Squadron batch containing eight assignments and eight matching search queries. A separate live MCP test returned article links using the updated news filters. Rust tests cover query gating, batch shape, permissions, and concurrent worker requests. The Settings render check verified the native color swatch and hex field for the custom accent option. Windows was cross-built.
+
+## 0.6.0 Squadron news article update
+
+All 35 standard Rust tests passed. The article fixtures cover the reported topic, hub, category, and trending URLs, undated results, stale entries, and publisher RSS article dates. A live lookup through the final news routing returned article links. The full Squadron desktop flow and native Windows execution were not exercised for this update.
